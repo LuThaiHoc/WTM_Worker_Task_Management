@@ -1,0 +1,5 @@
+wtm_venv/
+*.sql
+auth.py
+test/
+config.json

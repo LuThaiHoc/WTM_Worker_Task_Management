@@ -3,3 +3,5 @@ wtm_venv/
 auth.py
 test/
 config.json
+modules/
+.process_log

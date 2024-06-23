@@ -15,6 +15,9 @@ from PyQt5.QtGui import (QBrush, QColor, QConicalGradient, QCursor, QFont, QFont
 from PyQt5.QtWidgets import *
 from PyQt5 import uic
 import psutil
+import GPUtil
+from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetTemperature, nvmlDeviceGetName, NVML_TEMPERATURE_GPU
+
 from pyqtgraph import PlotWidget
 import pyqtgraph as pg
 from pathlib import Path
@@ -40,6 +43,9 @@ class SystemMonitor(QMainWindow):
         # self.ui = uic.loadUi("./main.ui", self)
         self.cpu_percent = 0
         self.ram_percent = 0
+        self.vram_percent = 0
+        self.cpu_temp = 0
+        self.gpu_temp = 0
         self.traces = dict()
         self.timestamp = 0
         self.timeaxis = []
@@ -49,10 +55,12 @@ class SystemMonitor(QMainWindow):
         # self.csv_writer = csv.writer(self.csv_file, delimiter=',')
         self.current_timer_cpu_graph = None
         self.current_timer_ram_graph = None
+        self.current_timer_vram_graph = None
         self.graph_lim = 15
         self.deque_timestamp = deque([], maxlen=self.graph_lim+20)
         self.deque_cpu = deque([], maxlen=self.graph_lim+20)
         self.deque_ram = deque([], maxlen=self.graph_lim+20)
+        self.deque_vram = deque([], maxlen=self.graph_lim+20)
         self.ui.label.setText(
             f"{platform.system()} {platform.machine()}")
         self.ui.label_2.setText(
@@ -71,14 +79,32 @@ class SystemMonitor(QMainWindow):
         x2_axis.setLabel(text='Time since start (s)')
         y2_axis = self.graphwidget2.getAxis('left')
         y2_axis.setLabel(text='Percent')
+        
+        self.graphwidget3 = PlotWidget(title="VRAM percent")
+        x3_axis = self.graphwidget3.getAxis('bottom')
+        x3_axis.setLabel(text='Time since start (s)')
+        y3_axis = self.graphwidget3.getAxis('left')
+        y3_axis.setLabel(text='Percent')
+        
 
-        # self.pushButton.clicked.connect(self.show_cpu_graph)
-        # self.pushButton_2.clicked.connect(self.show_ram_graph)
+        self.btnShowGraphCPU.clicked.connect(self.show_cpu_graph)
+        self.btnShowGraphRAM.clicked.connect(self.show_ram_graph)
+        self.btnShowGraphVRAM.clicked.connect(self.show_vram_graph)
         self.ui.gridLayout.addWidget(self.graphwidget1, 0, 0, 1, 3)
-        self.ui.gridLayout_2.addWidget(self.graphwidget2, 0, 0, 1, 3)
+        self.ui.gridLayout.addWidget(self.graphwidget2, 0, 0, 1, 3)
+        self.ui.gridLayout.addWidget(self.graphwidget3, 0, 0, 1, 3)
         self.show_cpu_graph()
-        self.show_ram_graph()
-
+        # self.show_ram_graph()
+        nvmlInit()
+        gpus = GPUtil.getGPUs()
+        if gpus:
+            gpu = gpus[0]
+            self.ui.label_5.setText(f"GPU: {gpu.name}")
+            self.ui.label_6.setText(f"VRAM: {int(gpu.memoryTotal)} MB")
+        else:
+            self.ui.label_5.setText("No GPU")
+            self.ui.label_6.setText("")
+            
         self.current_timer_systemStat = QtCore.QTimer()
         self.current_timer_systemStat.timeout.connect(
             self.getsystemStatpercent)
@@ -89,8 +115,29 @@ class SystemMonitor(QMainWindow):
         # gives a single float value
         self.cpu_percent = psutil.cpu_percent()
         self.ram_percent = psutil.virtual_memory().percent
+        self.cpu_temp = psutil.sensors_temperatures()['coretemp'][0].current 
+        # GPU
+        gpus = GPUtil.getGPUs()
+        if gpus:
+            gpu = gpus[0]  # Assuming we're interested in the first GPU
+            handle = nvmlDeviceGetHandleByIndex(0)
+            self.gpu_temp = nvmlDeviceGetTemperature(handle, NVML_TEMPERATURE_GPU)
+            self.vram_percent = gpu.load * 100
+        else:
+            self.gpu_temp = None
+            self.vram_percent = None
+
+        
         self.signal_cpu_percent_updated.emit(self.cpu_percent)
         self.signal_ram_percent_updated.emit(self.ram_percent)
+        
+        if self.gpu_temp is not None:
+            self.ui.labelTempGPU.setText(f"{self.gpu_temp:.1f}c")
+        if self.vram_percent is not None:
+            self.setValue(self.vram_percent, self.ui.labelPercentageVRAM,
+                      self.ui.circularProgressVRAM, "rgba(191, 191, 88, 255)")
+            
+        self.ui.labelTempCPU.setText(f"{self.cpu_temp:.1f}c")
         self.setValue(self.cpu_percent, self.ui.labelPercentageCPU,
                       self.ui.circularProgressCPU, "rgba(85, 170, 255, 255)")
         self.setValue(self.ram_percent, self.ui.labelPercentageRAM,
@@ -113,6 +160,7 @@ class SystemMonitor(QMainWindow):
         self.deque_timestamp.append(self.timestamp)
         self.deque_cpu.append(self.cpu_percent)
         self.deque_ram.append(self.ram_percent)
+        self.deque_vram.append(self.vram_percent)
         timeaxis_list = list(self.deque_timestamp)
         cpu_list = list(self.deque_cpu)
 
@@ -138,22 +186,143 @@ class SystemMonitor(QMainWindow):
         self.deque_timestamp.append(self.timestamp)
         self.deque_cpu.append(self.cpu_percent)
         self.deque_ram.append(self.ram_percent)
+        self.deque_vram.append(self.vram_percent)
         timeaxis_list = list(self.deque_timestamp)
         ram_list = list(self.deque_ram)
-
+        
         if self.timestamp > self.graph_lim:
             self.graphwidget2.setRange(xRange=[self.timestamp-self.graph_lim+1, self.timestamp], yRange=[
                                        min(ram_list[-self.graph_lim:]), max(ram_list[-self.graph_lim:])])
         self.set_plotdata(name="ram", data_x=timeaxis_list,
                           data_y=ram_list)
+        
+    
+    def start_vram_graph(self):
+
+        if self.current_timer_vram_graph:
+            self.current_timer_vram_graph.stop()
+            self.current_timer_vram_graph.deleteLater()
+            self.current_timer_vram_graph = None
+        self.current_timer_vram_graph = QtCore.QTimer()
+        self.current_timer_vram_graph.timeout.connect(self.update_vram)
+        self.current_timer_vram_graph.start(1000)
+    
+    def update_vram(self):
+        self.timestamp += 1
+
+        self.deque_timestamp.append(self.timestamp)
+        self.deque_cpu.append(self.cpu_percent)
+        self.deque_ram.append(self.ram_percent)
+        self.deque_vram.append(self.vram_percent)
+        timeaxis_list = list(self.deque_timestamp)
+        vram_list = list(self.deque_vram)
+        
+
+        if self.timestamp > self.graph_lim:
+            self.graphwidget3.setRange(xRange=[self.timestamp-self.graph_lim+1, self.timestamp], yRange=[
+                                       min(vram_list[-self.graph_lim:]), max(vram_list[-self.graph_lim:])])
+        self.set_plotdata(name="vram", data_x=timeaxis_list,
+                          data_y=vram_list)
 
     def show_cpu_graph(self):
+        self.graphwidget2.hide()
+        self.graphwidget3.hide()
         self.graphwidget1.show()
         self.start_cpu_graph()
-    def show_ram_graph(self):
+        self.btnShowGraphCPU.setEnabled(False)
+        self.btnShowGraphRAM.setEnabled(True)
+        self.btnShowGraphVRAM.setEnabled(True)
         
+        self.btnShowGraphCPU.setStyleSheet(
+            "QPushButton" "{" "background-color : lightblue;" "}"
+        )
+        self.btnShowGraphRAM.setStyleSheet(
+            "QPushButton"
+            "{"
+            "background-color : rgb(255, 44, 174);"
+            "}"
+            "QPushButton"
+            "{"
+            "color : white;"
+            "}"
+        )
+        self.btnShowGraphVRAM.setStyleSheet(
+            "QPushButton"
+            "{"
+            "background-color : rgb(191, 191, 88);"
+            "}"
+            "QPushButton"
+            "{"
+            "color : white;"
+            "}"
+        )
+
+    def show_ram_graph(self):
+        self.graphwidget1.hide()
         self.graphwidget2.show()
+        self.graphwidget3.hide()
+        # self.graphwidget2.autoRange()
         self.start_ram_graph()
+        self.btnShowGraphRAM.setEnabled(False)
+        self.btnShowGraphCPU.setEnabled(True)
+        self.btnShowGraphVRAM.setEnabled(True)
+        self.btnShowGraphRAM.setStyleSheet(
+            "QPushButton" "{" "background-color : lightblue;" "}"
+        )
+        self.btnShowGraphCPU.setStyleSheet(
+            "QPushButton"
+            "{"
+            "background-color : rgba(85, 170, 255, 255);"
+            "}"
+            "QPushButton"
+            "{"
+            "color : white;"
+            "}"
+        )
+        self.btnShowGraphVRAM.setStyleSheet(
+            "QPushButton"
+            "{"
+            "background-color : rgba(191, 191, 88, 255);"
+            "}"
+            "QPushButton"
+            "{"
+            "color : white;"
+            "}"
+        )
+        
+    def show_vram_graph(self):
+        
+        self.graphwidget1.hide()
+        self.graphwidget2.hide()
+        self.graphwidget3.show()
+        # self.graphwidget2.autoRange()
+        self.start_vram_graph()
+        self.btnShowGraphVRAM.setEnabled(False)
+        self.btnShowGraphRAM.setEnabled(True)
+        self.btnShowGraphCPU.setEnabled(True)
+        self.btnShowGraphVRAM.setStyleSheet(
+            "QPushButton" "{" "background-color : lightblue;" "}"
+        )
+        self.btnShowGraphCPU.setStyleSheet(
+            "QPushButton"
+            "{"
+            "background-color : rgba(85, 170, 255, 255);"
+            "}"
+            "QPushButton"
+            "{"
+            "color : white;"
+            "}"
+        )
+        self.btnShowGraphRAM.setStyleSheet(
+            "QPushButton"
+            "{"
+            "background-color : rgb(255, 44, 174);"
+            "}"
+            "QPushButton"
+            "{"
+            "color : white;"
+            "}"
+        )
 
     def set_plotdata(self, name, data_x, data_y):
         # print('set_data')
@@ -167,6 +336,10 @@ class SystemMonitor(QMainWindow):
             elif name == "ram":
                 self.traces[name] = self.graphwidget2.getPlotItem().plot(
                     pen=pg.mkPen((255, 0, 127), width=3))
+            
+            elif name == "vram":
+                self.traces[name] = self.graphwidget3.getPlotItem().plot(
+                    pen=pg.mkPen((196, 196, 88), width=3))
 
     # ==> SET VALUES TO DEF progressBarValue
 

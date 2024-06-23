@@ -85,7 +85,7 @@ class Database:
         self.connected = False
         try:
             self.test_connection()
-            print("Database connection established.")
+            # print("Database connection established.")
             self.connected = True
         except Exception as e:
             print(f"Failed to connect to the database: {e}")
@@ -147,23 +147,19 @@ class Database:
         
         return success
 
-    # def get_tasks(self, limit=None, offset=None):
-    #     session = self.Session()
-        
-    #     try:
-    #         query = session.query(AvtTask)
-    #         if limit:
-    #             query = query.limit(limit)
-    #         if offset:
-    #             query = query.offset(offset)
-    #         tasks = query.all()
-    #     except SQLAlchemyError as e:
-    #         print(f"Error retrieving tasks: {e}")
-    #         tasks = []
-    #     finally:
-    #         session.close()
-        
-    #     return tasks
+    def get_task_by_id(self, task_id):
+        session = self.Session()
+        try:
+            task = session.query(AvtTask).filter_by(id=task_id).first()
+            if not task:
+                print(f"Task with ID {task_id} not found.")
+                return None
+            return task
+        except SQLAlchemyError as e:
+            print(f"Error retrieving task by ID: {e}")
+            return None
+        finally:
+            session.close()
     
     def get_tasks(self, limit=None, offset=None):
         session = self.Session()
@@ -258,7 +254,7 @@ class Database:
         try:
             with self.engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
-            print("Successfully connected to the database.")
+            # print("Successfully connected to the database.")
         except exc.SQLAlchemyError as e:
             raise Exception(f"Database connection failed: {e}")
 # Example usage
@@ -271,24 +267,24 @@ if __name__ == "__main__":
     task_param = [{"name":"main_image_file","value":"/data/tiff-data/quang_ninh_1m.tif"},{"name":"template_image_file","value":"/data/tiff-data/template/08_resized.png"}]
     
     # # Adding a new task
-    task_id = db.add_task(
-        task_type=7,
-        creator='alex_123',
-        task_param=task_param,
-        task_stat=-5,
-        worker_ip='127.0.0.1',
-        process_id=123,
-        task_ETA=3600,
-        task_output='',
-        task_message='New updateed task'
-    )
-    print(f"New task added with ID: {task_id}")
+    # task_id = db.add_task(
+    #     task_type=7,
+    #     creator='alex',
+    #     task_param=task_param,
+    #     task_stat=-5,
+    #     worker_ip='127.0.0.1',
+    #     process_id=123,
+    #     task_ETA=3600,
+    #     task_output='',
+    #     task_message=''
+    # )
+    # print(f"New task added with ID: {task_id}")
     
-    # success = db.update_task(task_id=task_id, task_stat=10, task_output="updated output")
-    # if success:
-    #     print("success update task stat")
-    # else:
-    #     print("Error when update task stat")
+    success = db.update_task(task_id=24, task_stat=11, task_output="test updated at trigger")
+    if success:
+        print("success update task stat")
+    else:
+        print("Error when update task stat")
     
     # Getting a list of tasks
     # tasks = db.get_tasks(limit=10)

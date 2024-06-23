@@ -1,11 +1,12 @@
 import psutil
 import subprocess
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
+import os
 
 class ProcessMonitor(QObject):
     signal_running_time_update = pyqtSignal(float)  # in seconds
-    signal_process_started = pyqtSignal()
-    signal_process_ended = pyqtSignal()
+    signal_process_started = pyqtSignal(int)
+    signal_process_ended = pyqtSignal(int)
     signal_process_killed = pyqtSignal()
     signal_process_cpu_usage_update = pyqtSignal(float)  # in %
     signal_process_ram_usage_update = pyqtSignal(float)  # in MB
@@ -31,11 +32,28 @@ class ProcessMonitor(QObject):
         self.running_time += self.update_running_time_interval/1000
         self.signal_running_time_update.emit(self.running_time)
         
-    def start_process(self):
-        self.process = subprocess.Popen(self.command, shell=True)
-        self.pid = self.process.pid
-        self.signal_process_started.emit()
-        print(f"Process started with PID: {self.pid}")
+    def start_process(self, log_file_path = "process_log.log"):
+        # print("Starting process with command: ", self.command)
+        
+        # self.process = subprocess.Popen(self.command, shell=True)
+        # self.pid = self.process.pid
+        # self.signal_process_started.emit(self.pid)
+        # print(f"Process started with PID: {self.pid}")
+        
+        # make dir if not exist
+        log_dir = os.path.dirname(log_file_path)
+        os.makedirs(log_dir, exist_ok=True)
+        
+        with open(log_file_path, 'w') as log_file:
+            self.process = subprocess.Popen(
+                self.command,
+                shell=True,
+                stdout=log_file,
+                stderr=log_file
+            )
+            self.pid = self.process.pid
+            self.signal_process_started.emit(self.pid)
+            print(f"Process started with PID: {self.pid}")
         
         # Start the timer to monitor the process
         self.update_process_info_timer.start(self.update_process_info_interval)  # Update process info every 1000 ms (1 second)
@@ -93,12 +111,17 @@ class ProcessMonitor(QObject):
             self.signal_process_ram_usage_update.emit(info['total_memory_usage'])
             self.no_process_counter = 0
         else:
+            if self.process and self.process.poll() is not None:
+                exit_code = self.process.returncode
+                self.signal_process_ended.emit(exit_code)
+            else:
+                self.signal_process_ended.emit(0)
+                
             self.update_process_info_timer.stop()  # Stop the timer
             self.update_running_time_timer.stop()
-            self.signal_process_ended.emit()
+            # self.signal_process_ended.emit()
             self.signal_process_cpu_usage_update.emit(0)
             self.signal_process_ram_usage_update.emit(0)
-            print("Process ended")
 
     def kill_process(self):
         if self.process and self.process.poll() is None:
@@ -121,17 +144,17 @@ class ProcessMonitor(QObject):
             print("Process terminated")
         else:
             print("No process running to kill")
-            self.signal_process_ended.emit()
+            self.signal_process_ended.emit(0) # consider that process finished
             self.update_process_info_timer.stop()
             self.update_running_time_timer.stop()
             # self.unresponsive_timer.stop()
 
 # Example usage
 if __name__ == "__main__":
-    command = "python /media/hoc/WORK/remote/AnhPhuong/SAT/Project/SAT_Modules/template_matching/main.py"
+    command = "python /media/hoc/WORK/remote/AnhPhuong/SAT/Project/SAT_Modules/template_matching/deploy_source/main.py --avt_task_id 22 --connection_url postgresql://postgres:Pl0d9RQYUJCxZPGw6NJUcb8eJ6ZXdNMw@118.70.57.250:15445/avt"
     manager = ProcessMonitor(command)
-    manager.signal_process_started.connect(lambda: print("Signal Process started"))
-    manager.signal_process_ended.connect(lambda: print("Signal Process ended"))
+    manager.signal_process_started.connect(lambda pid: print(f"Signal Process started with PID: {pid}"))
+    manager.signal_process_ended.connect(lambda exit_code: print(f"Signal Process ended with exit code: {exit_code}"))
     manager.signal_process_cpu_usage_update.connect(lambda cpu_usage: print(f"Signal CPU Usage: {cpu_usage}%"))
     manager.signal_process_ram_usage_update.connect(lambda ram_usage: print(f"Signal RAM Usage: {ram_usage} MB"))
     manager.signal_process_killed.connect(lambda: print("Process killed"))
@@ -140,7 +163,7 @@ if __name__ == "__main__":
     # manager.set_process_id(2303169)
     
     # Example of killing the process after a delay
-    QTimer.singleShot(5000, manager.kill_process)  # Kill process after 5 seconds
+    # QTimer.singleShot(5000, manager.kill_process)  # Kill process after 5 seconds
     
     import sys
     from PyQt5.QtWidgets import QApplication

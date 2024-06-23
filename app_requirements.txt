@@ -1,0 +1,11 @@
+- Hiển thị thông tin CPU, RAM hiện tại của workerMachine
+- Hiển thị danh sách trạng thái các task (update realtime)
+- Thêm, sửa, xóa thông tin task (Options) - Nhiệm vụ của server UI
+- Tự động chạy task dựa trên task_stat và tài nguyên còn lại của workerMachine (cần thêm thông tin tài nguyên của task cần chạy)
+- Chạy một task (start task với param từ db) (hỗ trợ force start): 
++ Quản lý tiến trình của task đang chạy
++ Hiển thị RAM, CPU, thời gian tiến trình đang chạy,...
++ Kill tiến trình nếu bị treo
++ Force kill tiến trình
++ Update task_task, task_ETA,... vào db
++ Xử lý kết thúc tiến trình

@@ -16,13 +16,15 @@ from process_monitor import ProcessMonitor
 import threading
 import time
 import psutil
+from exit_code import *
 
 status_colors = {
     "WAITING": QColor(255, 255, 0),    # Yellow
     "RUNNING": QColor(0, 255, 0),      # Green
     "FINISHED": QColor(0, 0, 255),     # Blue
     "KILLED": QColor(255, 0, 0),       # Red
-    "ERROR": QColor(255, 165, 0)       # Orange
+    "ERROR": QColor(255, 165, 0),       # Orange
+    "UNKNOWN": QColor(255, 255, 255)  
 }
 
 task_types = {
@@ -33,7 +35,7 @@ task_types = {
     5 : "Detection",
     6 : "Classification",
     7 : "Object finder",
-    8 : "Others"
+    8 : "Others",
 }
 
 class StatusValue(Enum):
@@ -42,6 +44,9 @@ class StatusValue(Enum):
     FINISHED = "FINISHED"
     KILLED = "KILLED"
     ERROR = "ERROR"
+    UNKNOWN = "UNKNOWN"
+
+PROCESS_LOG_DIR = '.process_log'
 
 def format_timestamp(timestamp_int):
     try:
@@ -84,12 +89,14 @@ class Ui_TaskItem(QWidget):
     def __init__(self, task_data: AvtTask):
         super().__init__()
         self.task = task_data
+        db_config = DatabaseConfig().read_from_json("config.json")
+        self.db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
+        self.process_log_file_path = os.path.join(PROCESS_LOG_DIR, f"{self.task.id}.log")
         
         self.main_layout = QHBoxLayout()
         self.grid_layout = QGridLayout()
         
         self.status_layout = QHBoxLayout()
-        self.status = StatusValue.RUNNING
         self.status_label = QLabel("")
         self.status_label.setFixedWidth(100)
         self.status_label.setAlignment(Qt.AlignCenter)
@@ -102,7 +109,9 @@ class Ui_TaskItem(QWidget):
         self.creator_header = HeaderLabel("Người tạo:")
         self.creator_value = ValueLabel(self.task.creator)
         self.type_header = HeaderLabel("Type:")
-        self.type_value = ValueLabel(task_types[self.task.type])
+        task_type_value = task_types.get(self.task.type, "Unknown")
+        self.type_value = ValueLabel(task_type_value)
+        
         
         self.cpu_usage_header = HeaderLabel("CPU usage (%)")
         self.ram_usage_header = HeaderLabel("RAM usage (MB)")
@@ -175,11 +184,59 @@ class Ui_TaskItem(QWidget):
         self.main_layout.setSpacing(10)
         self.setLayout(self.main_layout)
         
-        self.update_task_status(self.get_status_by_stat())
+        self.status = StatusValue.UNKNOWN
+        self.update_task_status(self.get_status_by_stat(self.task.task_stat))
         self.start_process_button.clicked.connect(self.start_process)
         self.kill_process_button.clicked.connect(self.kill_process)
         
-        command = "python /media/hoc/WORK/remote/AnhPhuong/SAT/Project/SAT_Modules/template_matching/main.py"
+        self.command = ""
+        
+        # TODO: View task details widget
+    
+        # Note: Really carefully consider to use auto update data from database
+        # Maybe need an auto update because some time module can change task data in database (or user changes)
+        # It make program take more resource and more request to the database but we can make sure the data always updated
+        # Solution: Only update task data when process is running
+        self.auto_update_task_data_timer = QTimer(self)
+        self.auto_update_task_data_timer.timeout.connect(self.auto_update_task_data_from_db)
+        self.auto_update_task_data_timer.start(3000) # auto update data every 3s
+    
+    def increase_waiting_queue_position(self):
+        self.update_task_data_from_db()
+        if self.task.task_stat <= -2:
+            self.db.update_task(self.task.id, task_stat=self.task.task_stat + 1)
+            self.task.task_stat += 1
+    
+    def auto_update_task_data_from_db(self):
+        # Only auto update task data when it is running because module processing can change task data in database
+        if self.status != StatusValue.RUNNING:
+            return
+        self.task = self.db.get_task_by_id(self.task.id)
+        new_task_status = self.get_status_by_stat(self.task.task_stat) # it will ignore killed status
+        
+        # update status display
+        if self.status != new_task_status and self.status != StatusValue.KILLED:
+            self.update_task_status(new_task_status)
+            
+        # update data that can be changed by modules
+        self.update_at_value.setText(format_timestamp(self.task.updatedAt))
+        self.time_remain_value.setText(f"{str(self.task.task_ETA)}s")
+    
+    def update_task_data_from_db(self):
+        self.task = self.db.get_task_by_id(self.task.id)
+        new_task_status = self.get_status_by_stat(self.task.task_stat) # it will ignore killed status
+        
+        # update status display
+        if self.status != new_task_status and self.status != StatusValue.KILLED:
+            self.update_task_status(new_task_status)
+            
+        # update information
+        self.update_at_value.setText(format_timestamp(self.task.updatedAt))
+        self.time_remain_value.setText(f"{str(self.task.task_ETA)}s") # maybe module udpate ETA while processing
+    
+     
+    def update_task_command(self, command):
+        self.command = command
         self.process_monitor = ProcessMonitor(command)
         self.process_monitor.signal_process_started.connect(self.process_started)
         self.process_monitor.signal_process_ended.connect(self.process_ended)
@@ -188,34 +245,50 @@ class Ui_TaskItem(QWidget):
         self.process_monitor.signal_process_cpu_usage_update.connect(self.update_cpu_usage)
         self.process_monitor.signal_process_ram_usage_update.connect(self.update_ram_usage)
     
-    def update_task_data(self, task: AvtTask):
-        self.task = task
-        # self.create_at_value.setText(format_timestamp(self.task.createdAt))
-        self.update_at_value.setText(format_timestamp(self.task.updatedAt))
-        # self.creator_value.setText(self.task.creator)
-        # self.type_value.setText(task_types[self.task.type])
-        self.time_remain_value.setText(f"{str(self.task.task_ETA)}s")
-    
     def update_running_time(self, value):
         self.time_excute_value.setText(f"{value}s")
+        # update running time in task stat
+        if value > 1: # only update running time > 1 in task_stat to avoid confilict with tast_stat=1 (finished) or task_stat = 0 (error)
+            self.db.update_task(self.task.id, task_stat=value)
+            self.task.task_stat = value
         
     def process_killed(self):
         # update stats to database
-        
-        # update status
+        if not self.db.update_task(self.task.id, task_stat=0, task_message=exit_code_messages[EXIT_PROCESS_KILLED_BY_WTM]):
+            print(f"Warning: Process killed but cannot update status to database - pid: {self.task.id}")
+        # Special update process KILLED status (because in db we set 0 value for killed/error) 
+        self.task.task_stat = 0
         self.update_task_status(StatusValue.KILLED)
+        self.update_task_data_from_db()
     
-    def process_ended(self):
-        # update stats to database
+    def process_ended(self, exit_code):
+        print(f"Process of task {self.task.id} end with exit code: {exit_code}")
+        # get task data when process ended
+        current_task_data = self.db.get_task_by_id(self.task.id)
         
-        # update status
-        self.update_task_status(StatusValue.FINISHED)
+        # if task stat not updated by module, WTM update it and message by exit code
+        # Note: Module should only update task stat for finished or error status
+        if current_task_data.task_stat != 0 and current_task_data.task_stat != 1: 
+            if exit_code == 0:
+                if not self.db.update_task(self.task.id, task_stat=1, task_message=exit_code_messages[exit_code]):
+                    print(f"Warning: Process ended but cannot update status to database - TaskID: {self.task.id}")
+                
+            else: # exit code != 0 mean process not finished
+                if not self.db.update_task(self.task.id, task_stat=0, task_message=exit_code_messages.get(exit_code, f"Unknown error with code {exit_code}")):
+                    print(f"Warning: Process ended but cannot update status to database - TaskID: {self.task.id}")
+                
+        # update all task data when process ended (stat, output, message,...)
+        self.update_task_data_from_db()
+
     
-    def process_started(self):
+    def process_started(self, pid):
+        self.task.process_id = pid
         # set stats to database
-        
+        if not self.db.update_task(self.task.id, process_id=pid):
+            print(f"Warning: Process started but cannot update status to database - pid: {self.task.id}")
         # update status
         self.update_task_status(StatusValue.RUNNING)
+        
     
     def update_ram_usage(self, usage):
         formatted_usage = f"{usage:.2f} MB"
@@ -225,8 +298,7 @@ class Ui_TaskItem(QWidget):
     def update_cpu_usage(self, usage):
         self.cpu_usage_progess.setValue(int(usage))   
              
-    def get_status_by_stat(self) -> StatusValue:
-        stat = self.task.task_stat
+    def get_status_by_stat(self, stat) -> StatusValue:
         if stat < 0:
             return StatusValue.WAITING
         elif stat == 0:
@@ -235,26 +307,28 @@ class Ui_TaskItem(QWidget):
             return StatusValue.FINISHED
         elif stat > 1:
             return StatusValue.RUNNING
+        else:
+            return StatusValue.UNKNOWN # never happend :)))
         
     def kill_process(self):
         # kill process...
         self.process_monitor.kill_process()
-        # self.update_task_status(StatusValue.KILLED)
     
     def start_process(self):
-        print("Start process...")
         # start process
-        self.process_monitor.start_process()
-        # monitor process
-        # self.monitoring_process_thread = threading.Thread(target=self.process_monitor.monitor_process)
-        # self.monitoring_process_thread.start()
+        # temporary update process stat for get out of WAITING queue (status)
+        self.db.update_task(self.task.id, task_stat=0.5)
+        self.task.task_stat = 0.5
+        self.process_monitor.start_process(self.process_log_file_path)
 
-        # self.update_task_status(StatusValue.RUNNING)
         
     def update_task_status(self, new_status : StatusValue):
-        self.status = new_status
-        self.status_label.setText(self.status.value)
-        self.status_label.setStyleSheet(f"font-size: 12pt; font-weight: bold; color: {status_colors[self.status.value].name()};")
+        if self.status != new_status:
+            self.status = new_status
+            self.signal_status_changed.emit()
+        
+            self.status_label.setText(self.status.value)
+            self.status_label.setStyleSheet(f"font-size: 12pt; font-weight: bold; color: {status_colors[self.status.value].name()};")
         
         # Update any other relevant UI elements based on the new status
         if self.status == StatusValue.RUNNING:
@@ -270,14 +344,15 @@ class Ui_TaskItem(QWidget):
             self.start_process_button.setEnabled(True)
             self.kill_process_button.setEnabled(False)
             
-        self.signal_status_changed.emit()
         
 
 from system_monitor.systemMonitor import SystemMonitor
 class Ui_TaskManager(QWidget):
-    def __init__(self):
+    def __init__(self, config_file="config.json"):
         super().__init__()
-        db_config = DatabaseConfig().read_from_json("config.json")
+        self.config_file = config_file
+        self.task_limit = 10
+        db_config = DatabaseConfig().read_from_json(self.config_file)
         self.db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
 
         self.main_layout = QVBoxLayout()
@@ -316,13 +391,17 @@ class Ui_TaskManager(QWidget):
         self.num_task_widget = QWidget()
         self.num_task_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0);")
         self.num_task_widget.setLayout(self.num_task_layout)
-        self.num_task_widget.setFixedSize(300, 150)
+        self.num_task_widget.setFixedSize(200, 150)
         self.info_layout.addWidget(self.num_task_widget)
         # self.info_layout.addLayout(self.num_task_layout)
         
+        self.current_system_cpu_percent = 0
+        self.current_system_ram_percent = 0
 
         self.top_layout.addLayout(self.info_layout)
         self.system_monitor = SystemMonitor()
+        self.system_monitor.signal_cpu_percent_updated.connect(self.update_current_system_cpu)
+        self.system_monitor.signal_ram_percent_updated.connect(self.update_current_system_ram)
         self.top_layout.addStretch(1)
         self.top_layout.addWidget(self.system_monitor)
 
@@ -331,20 +410,81 @@ class Ui_TaskManager(QWidget):
 
         self.setLayout(self.main_layout)
         self.showMaximized()
-
-        self.list_task = self.db.get_tasks(limit=5)
-        self.list_task_widget = [Ui_TaskItem(task) for task in self.list_task]
         
+        self.command_dict = self.read_module_command_dict(self.config_file, "modules")
+        if self.command_dict is None:
+            QMessageBox.warning(self, "Error read module command", f"No section \"modules\" in {self.config_file} file, need to define it to call module for task processing")
+            sys.exit(1)
+
+        self.list_task = self.db.get_tasks(limit=self.task_limit)
+        self.list_task_widget = []
+        for index, task in enumerate(self.list_task):
+            task_widget = Ui_TaskItem(task)
+            self.add_task_widget(task_widget, index)
+
         self.adjust_column_widths()
         self.populate_table()
         
         # realtime update task in database
-        self.update_task_from_db_timer = QTimer()
+        self.update_task_from_db_timer = QTimer(self)
         self.update_task_from_db_timer.timeout.connect(self.update_list_task_from_db)
         self.update_task_from_db_timer.start(1000)
         
+        # auto start process by process queue
+        self.auto_serve_waiting_tasks_timer = QTimer(self)
+        self.auto_serve_waiting_tasks_timer.timeout.connect(self.serve_waiting_tasks)  
+        self.auto_serve_waiting_tasks_timer.start(2000)
+    
+    def serve_waiting_tasks(self):
+        need_to_update_queue = True
+        
+        for task_widget in self.list_task_widget:
+            if task_widget.task.task_stat == -1: # serve task that in first queue
+                
+                # if have task with stat = -1 dont update queue if this task not served
+                need_to_update_queue = False
+                
+                serve_this_task = True
+                # TODO: Check current resource and decide to serve this task
+                # We need to consider usage resoure by task type, difference of each task
+                # It's to hard and need mode research for good policy of serve task
+                # ex: simple check if current CPU and RAM usage is less then 80%
+                if self.current_system_cpu_percent > 60 or self.current_system_ram_percent > 60:
+                    print("=========== IGNORE SERVER TASK BECAUSE OF LESS RESOURCE ===========")
+                    serve_this_task = False
+                
+                # If serve a task, need to update queue
+                if serve_this_task:
+                    print(f"Serve task with id: {task_widget.task.id} - Name: {task_widget.task.creator}")
+                    task_widget.start_process()
+                    need_to_update_queue = True
+                    # only serve one task when call serve_waiting_tasks function 
+                    # it prevent serve case that server multi task at the same time, can cause machine overload
+                    break  
+        
+        # if this task was served, increase others queue
+        if need_to_update_queue:
+            for task_widget in self.list_task_widget:
+                task_widget.increase_waiting_queue_position()
+        
+        
+    def update_current_system_ram(self, value):
+        self.current_system_ram_percent = value
+    
+    def update_current_system_cpu(self, value):
+        self.current_system_cpu_percent = value
+    
+    def add_task_widget(self, task_widget: Ui_TaskItem, index=-1): # default to end of list
+        command = self.command_dict.get(str(int(task_widget.task.type)), "")
+        full_command = f"{command} --avt_task_id {task_widget.task.id} --config_file {self.config_file}" 
+        # print("Set task command: ", full_command)
+        task_widget.update_task_command(full_command)
+        # connect signal slot for task changed here
+        task_widget.signal_status_changed.connect(self.update_task_statictics)
+        self.list_task_widget.insert(index, task_widget)        
+        
     def update_list_task_from_db(self):
-        new_task_list = self.db.get_tasks(limit=5)
+        new_task_list = self.db.get_tasks(limit=self.task_limit)
         
         # Create sets for comparison
         current_task_ids = {task.id for task in self.list_task}
@@ -355,11 +495,11 @@ class Ui_TaskManager(QWidget):
         
         # Tasks to remove
         tasks_to_remove = [task for task in self.list_task if task.id not in new_task_ids]
-        if len(tasks_to_remove) > 0:
-            print([task.id for task in tasks_to_remove])
         
-        # Tasks to update
-        tasks_to_update = [task for task in new_task_list if task.id in current_task_ids]
+        if len(tasks_to_remove) > 0:
+            print("Removing task" , [task.id for task in tasks_to_remove])
+            print("List task id: ", [task.id for task in self.list_task])
+            print("List task widget id: ", [task.task.id for task in self.list_task_widget])
         
         # Remove tasks
         for task in tasks_to_remove:
@@ -369,40 +509,52 @@ class Ui_TaskManager(QWidget):
             self.list_task.remove(task)
             # savely remove task widget
             # got crash when removed widget 
-            # TODO: need to remove widget to reduce ram usage, got crash here!
+            # TODO: got crash here, need to remove widget to reduce ram usage, 
             # self.list_task_widget = [widget for widget in self.list_task_widget if widget.task.id != task.id]
-            # self.list_task_widget.pop(index)
+            # self.list_task_widget.remove(index)
+            # print("List task id: ", [task.id for task in self.list_task])
+            # print("List task widget id: ", [task.task.id for task in self.list_task_widget])
         
-        # # Add new tasks
-        # for task in tasks_to_add:
-        #     self.list_task.append(task)
-        #     task_widget = Ui_TaskItem(task)
-        #     self.list_task_widget.append(task_widget)
-        #     self.add_task_to_table(task_widget)
-            
+
         # Add new tasks to the beginning of the table and lists
         for task in reversed(tasks_to_add):  # Reverse to add to the top
             self.list_task.insert(0, task)
             task_widget = Ui_TaskItem(task)  # Assuming Ui_TaskItem is correctly defined
-            self.list_task_widget.insert(0, task_widget)
-            self.add_task_to_table(task_widget, 0)  # Add to the top (row 0)
+            # self.list_task_widget.insert(0, task_widget)
+            self.add_task_widget(task_widget, 0)
+            self.add_task_to_table(task_widget, self.list_task.index(task))  # Add to the top (row 0)
         
-        # Update existing tasks
-        # for task in tasks_to_update:
-        #     index = self.list_task.index(task)
-        #     self.list_task[index] = task
-        #     task_widget = self.list_task_widget[index]
-        #     task_widget.update_task_data(task)
         
-        # Update the counts in the header labels
-        self.update_header_counts()
+        self.update_task_statictics()
         
-    def update_header_counts(self):
-        self.num_waiting_value.setText(str(sum(1 for task in self.list_task if task.task_stat < 0)))
-        self.num_running_value.setText(str(sum(1 for task in self.list_task if task.task_stat > 1)))
-        self.num_finished_value.setText(str(sum(1 for task in self.list_task if task.task_stat == 1)))
-        self.num_error_value.setText(str(sum(1 for task in self.list_task if task.task_stat == 0)))
-
+        # Update task data
+        # tasks_to_update = [task for task in new_task_list if task.id in current_task_ids]
+        # Dont need to update existing tasks, 
+        # task_widget object have it own connection to the database and update itself
+    
+    def read_module_command_dict(self, config_file, section):
+        try:
+            # Read the JSON file
+            with open(config_file, 'r') as file:
+                data = json.load(file)
+            
+            # Extract the section
+            section = data.get(section, None)
+            
+            if section is None:
+                raise KeyError(f"Section '{section}' not found in the JSON file.")
+            
+            return section
+        
+        except FileNotFoundError:
+            print(f"Error: The file {config_file} does not exist.")
+            return None
+        except json.JSONDecodeError:
+            print("Error: The file is not a valid JSON.")
+            return None
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
     
     def add_task_to_table(self, task_widget: Ui_TaskItem, row):
         self.table_widget.insertRow(row)
@@ -431,8 +583,15 @@ class Ui_TaskManager(QWidget):
         self.table_widget.setColumnWidth(5, 200)  # Adjusting CPU Usage column width
         self.table_widget.setColumnWidth(6, 200)  # Adjusting RAM Usage column width
         
+    def update_task_statictics(self):
+        # print(task_widget.status)
+        self.num_waiting_value.setText(str(sum(1 for task_widget in self.list_task_widget if task_widget.status == StatusValue.WAITING)))
+        self.num_running_value.setText(str(sum(1 for task_widget in self.list_task_widget if task_widget.status == StatusValue.RUNNING)))
+        self.num_finished_value.setText(str(sum(1 for task_widget in self.list_task_widget if task_widget.status == StatusValue.FINISHED)))
+        self.num_error_value.setText(str(sum(1 for task_widget in self.list_task_widget if task_widget.status == StatusValue.KILLED or task_widget.status == StatusValue.ERROR)))
+    
     def populate_table(self):
-        row_count = len(self.list_task)
+        row_count = len(self.list_task_widget)
         self.table_widget.setRowCount(row_count)
         for row, item_widget  in enumerate(self.list_task_widget):
             self.table_widget.setCellWidget(row, 0, item_widget.status_label)
@@ -447,11 +606,7 @@ class Ui_TaskManager(QWidget):
             self.table_widget.setCellWidget(row, 9, item_widget.start_process_button)
             self.table_widget.setCellWidget(row, 10, item_widget.kill_process_button)
 
-        # Update the counts in the header labels
-        self.num_waiting_value.setText(str(sum(1 for task in self.list_task if task.task_stat < 0)))
-        self.num_running_value.setText(str(sum(1 for task in self.list_task if task.task_stat > 1)))
-        self.num_finished_value.setText(str(sum(1 for task in self.list_task if task.task_stat == 1)))
-        self.num_error_value.setText(str(sum(1 for task in self.list_task if task.task_stat == 0)))
+        self.update_task_statictics()
 
         # Adjust table widget properties if needed
         self.table_widget.setSizeAdjustPolicy(QTableWidget.AdjustToContents)

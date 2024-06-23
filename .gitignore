@@ -5,3 +5,4 @@ test/
 config.json
 modules/
 .process_log
+__pycache__

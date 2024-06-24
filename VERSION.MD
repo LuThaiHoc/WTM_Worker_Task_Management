@@ -6,6 +6,9 @@
 
 # TODO
 - [ ] Network (on processing)
+- [ ] View details of a task
+- [ ] Ignore a task
+- [ ] Kill non responsive task (auto, ask user)
 
 # V1.0
 # Monitor system status

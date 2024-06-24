@@ -21,7 +21,7 @@ WTM (Worker Task Manager) is a Python-based system designed to manage and monito
   - Update task information to the database
 
 
-# App ui
+# App UI
 ![app ui](resources/main_ui.png)
 
 ## Requirements
@@ -75,7 +75,7 @@ Simple config file:
     ```
 
 # Module Development
-- When a task needs to be serviced, the Worker Task Manager (WTM) calls a module using a command configured in the `config.json` file, passing the task ID as input to the module. Example: `modules/01_correction/main --avt_task_id 12 --config_file config.json`
+- When a task needs to be serviced, the Worker Task Manager (WTM) calls a module using correspond command of task type configured in the `config.json` file, passing the task ID as input to the module. Example: `modules/01_correction/main --avt_task_id 12 --config_file config.json`
 - The module retrieves task data from the database, processes it, and updates the results back to the database.
 - Upon completion, the module exits and returns a code to the WTM: 0 indicates success, while other codes correspond to specific errors defined in [exit_code.py](exit_code.py) (utilizing `sys.exit(code)`).
 - For consistency across programs, utilize connection modules for both database operations ([database](utils/database.py)) and FTP connections ([ftp_connector](utils/ftp_connector.py)), located in the `utils` directory.

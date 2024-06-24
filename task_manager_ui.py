@@ -13,8 +13,6 @@ import os
 from datetime import datetime
 from enum import Enum
 from process_monitor import ProcessMonitor
-import threading
-import time
 import psutil
 from exit_code import *
 
@@ -98,7 +96,9 @@ class Ui_TaskItem(QWidget):
         
         self.status_layout = QHBoxLayout()
         self.status_label = QLabel("")
-        self.status_label.setFixedWidth(100)
+        # self.status_label.setFixedWidth(100)
+        self.status_label.setMinimumWidth(100)
+        
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_layout.addWidget(self.status_label)
         
@@ -244,6 +244,7 @@ class Ui_TaskItem(QWidget):
         self.process_monitor.signal_running_time_update.connect(self.update_running_time)
         self.process_monitor.signal_process_cpu_usage_update.connect(self.update_cpu_usage)
         self.process_monitor.signal_process_ram_usage_update.connect(self.update_ram_usage)
+        self.process_monitor.signal_process_not_responding.connect(self.process_non_responding)
     
     def update_running_time(self, value):
         self.time_excute_value.setText(f"{value}s")
@@ -260,6 +261,12 @@ class Ui_TaskItem(QWidget):
         self.task.task_stat = 0
         self.update_task_status(StatusValue.KILLED)
         self.update_task_data_from_db()
+    
+    def process_non_responding(self):
+        # print(f"Process {self.command} is not responding..")
+        # TODO: Hanle not-responding, ask user for kill this process or auto kill
+        self.status_label.setText("NOT RESPONDING")
+        self.status_label.setStyleSheet(f"font-size: 12pt; font-weight: bold; color: {status_colors[StatusValue.ERROR.value].name()};")
     
     def process_ended(self, exit_code):
         print(f"Process of task {self.task.id} end with exit code: {exit_code}")
@@ -509,7 +516,7 @@ class Ui_TaskManager(QWidget):
             self.list_task.remove(task)
             # savely remove task widget
             # got crash when removed widget 
-            # TODO: got crash here, need to remove widget to reduce ram usage, 
+            # TODO: got crash here, need to remove widget to free ram usage, 
             # self.list_task_widget = [widget for widget in self.list_task_widget if widget.task.id != task.id]
             # self.list_task_widget.remove(index)
             # print("List task id: ", [task.id for task in self.list_task])

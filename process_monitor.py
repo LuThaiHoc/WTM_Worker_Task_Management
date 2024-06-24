@@ -10,6 +10,7 @@ class ProcessMonitor(QObject):
     signal_process_killed = pyqtSignal()
     signal_process_cpu_usage_update = pyqtSignal(float)  # in %
     signal_process_ram_usage_update = pyqtSignal(float)  # in MB
+    signal_process_not_responding = pyqtSignal()
     
     def __init__(self, command):
         super().__init__()
@@ -25,15 +26,22 @@ class ProcessMonitor(QObject):
         self.update_running_time_timer = QTimer(self)
         self.update_running_time_timer.timeout.connect(self.update_time_excute)
         
+        self.check_unresponsive_interval = 2000  # in ms
+        self.unresponsive_timer = QTimer(self)
+        self.unresponsive_timer.timeout.connect(self.check_unresponsive)
+        
         self.no_process_counter = 0
         self.running_time = 0
+        
+        self.previous_cpu_usage = []
+        self.previous_mem_usage = []
         
     def update_time_excute(self):
         self.running_time += self.update_running_time_interval/1000
         self.signal_running_time_update.emit(self.running_time)
         
     def start_process(self, log_file_path = "process_log.log"):
-        # print("Starting process with command: ", self.command)
+        print("Starting process with command: ", self.command)
         
         # self.process = subprocess.Popen(self.command, shell=True)
         # self.pid = self.process.pid
@@ -42,7 +50,8 @@ class ProcessMonitor(QObject):
         
         # make dir if not exist
         log_dir = os.path.dirname(log_file_path)
-        os.makedirs(log_dir, exist_ok=True)
+        if log_dir != "":
+            os.makedirs(log_dir, exist_ok=True)
         
         with open(log_file_path, 'w') as log_file:
             self.process = subprocess.Popen(
@@ -58,6 +67,7 @@ class ProcessMonitor(QObject):
         # Start the timer to monitor the process
         self.update_process_info_timer.start(self.update_process_info_interval)  # Update process info every 1000 ms (1 second)
         self.update_running_time_timer.start(self.update_running_time_interval)
+        self.unresponsive_timer.start(self.check_unresponsive_interval)
         self.running_time = 0
         
     def set_process_id(self, pid):
@@ -102,7 +112,7 @@ class ProcessMonitor(QObject):
     def update_process_info(self):
         info = self.get_process_info()
         if isinstance(info, int):
-            print(f"Lost monitoring, Trying to find process by ID, tried: {info}")
+            # print(f"Lost monitoring, Trying to find process by ID, tried: {info}")
             return
         
         if info is not None:
@@ -110,6 +120,12 @@ class ProcessMonitor(QObject):
             self.signal_process_cpu_usage_update.emit(info['total_cpu_usage'])
             self.signal_process_ram_usage_update.emit(info['total_memory_usage'])
             self.no_process_counter = 0
+            
+            self.previous_cpu_usage.append(info['total_cpu_usage'])
+            self.previous_mem_usage.append(info['total_memory_usage'])
+            if len(self.previous_cpu_usage) > 10:
+                self.previous_cpu_usage.pop(0)
+                self.previous_mem_usage.pop(0)
         else:
             if self.process and self.process.poll() is not None:
                 exit_code = self.process.returncode
@@ -119,10 +135,17 @@ class ProcessMonitor(QObject):
                 
             self.update_process_info_timer.stop()  # Stop the timer
             self.update_running_time_timer.stop()
+            self.unresponsive_timer.stop()
             # self.signal_process_ended.emit()
             self.signal_process_cpu_usage_update.emit(0)
             self.signal_process_ram_usage_update.emit(0)
 
+    def check_unresponsive(self):
+        if len(self.previous_cpu_usage) >= 10: # 10s - base on update infor timer
+            # if dont use CPU or RAM in 10s, set as non responding
+            if all(usage == 0 for usage in self.previous_cpu_usage) and len(set(self.previous_mem_usage)) == 1:
+                self.signal_process_not_responding.emit()
+    
     def kill_process(self):
         if self.process and self.process.poll() is None:
             print("Force killing process")
@@ -140,14 +163,14 @@ class ProcessMonitor(QObject):
             
             self.signal_process_cpu_usage_update.emit(0)
             self.signal_process_ram_usage_update.emit(0)
-            # self.unresponsive_timer.stop()
+            self.unresponsive_timer.stop()
             print("Process terminated")
         else:
             print("No process running to kill")
             self.signal_process_ended.emit(0) # consider that process finished
             self.update_process_info_timer.stop()
             self.update_running_time_timer.stop()
-            # self.unresponsive_timer.stop()
+            self.unresponsive_timer.stop()
 
 # Example usage
 if __name__ == "__main__":

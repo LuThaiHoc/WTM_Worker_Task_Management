@@ -81,7 +81,7 @@ class ValueLabel(QLabel):
         self.setFont(value_font)
         self.setStyleSheet("color: #e0e0e0;")  # Example color for values, adjust as needed
 
-class Ui_TaskItem(QWidget):
+class TaskItem(QWidget):
     signal_status_changed = pyqtSignal()
     
     def __init__(self, task_data: AvtTask):
@@ -266,7 +266,7 @@ class Ui_TaskItem(QWidget):
         # print(f"Process {self.command} is not responding..")
         # TODO: Hanle not-responding, ask user for kill this process or auto kill
         self.status_label.setText("NOT RESPONDING")
-        self.status_label.setStyleSheet(f"font-size: 12pt; font-weight: bold; color: {status_colors[StatusValue.ERROR.value].name()};")
+        self.status_label.setStyleSheet(f"font-size: 10pt; font-weight: bold; color: {status_colors[StatusValue.ERROR.value].name()};")
     
     def process_ended(self, exit_code):
         print(f"Process of task {self.task.id} end with exit code: {exit_code}")
@@ -324,8 +324,8 @@ class Ui_TaskItem(QWidget):
     def start_process(self):
         # start process
         # temporary update process stat for get out of WAITING queue (status)
-        self.db.update_task(self.task.id, task_stat=0.5)
-        self.task.task_stat = 0.5
+        self.db.update_task(self.task.id, task_stat=1.5)
+        self.task.task_stat = 1.5
         self.process_monitor.start_process(self.process_log_file_path)
 
         
@@ -426,7 +426,7 @@ class Ui_TaskManager(QWidget):
         self.list_task = self.db.get_tasks(limit=self.task_limit)
         self.list_task_widget = []
         for index, task in enumerate(self.list_task):
-            task_widget = Ui_TaskItem(task)
+            task_widget = TaskItem(task)
             self.add_task_widget(task_widget, index)
 
         self.adjust_column_widths()
@@ -481,13 +481,15 @@ class Ui_TaskManager(QWidget):
     def update_current_system_cpu(self, value):
         self.current_system_cpu_percent = value
     
-    def add_task_widget(self, task_widget: Ui_TaskItem, index=-1): # default to end of list
+    def add_task_widget(self, task_widget: TaskItem, index=-1): # default to end of list
         command = self.command_dict.get(str(int(task_widget.task.type)), "")
         full_command = f"{command} --avt_task_id {task_widget.task.id} --config_file {self.config_file}" 
         # print("Set task command: ", full_command)
         task_widget.update_task_command(full_command)
         # connect signal slot for task changed here
         task_widget.signal_status_changed.connect(self.update_task_statictics)
+        print("Size of task widget: ", sys.getsizeof(task_widget))
+        
         self.list_task_widget.insert(index, task_widget)        
         
     def update_list_task_from_db(self):
@@ -517,6 +519,7 @@ class Ui_TaskManager(QWidget):
             # savely remove task widget
             # got crash when removed widget 
             # TODO: got crash here, need to remove widget to free ram usage, 
+            # task_widget size is 136 bytes, calculate size of array 10000 task is ~1.3MB
             # self.list_task_widget = [widget for widget in self.list_task_widget if widget.task.id != task.id]
             # self.list_task_widget.remove(index)
             # print("List task id: ", [task.id for task in self.list_task])
@@ -526,7 +529,7 @@ class Ui_TaskManager(QWidget):
         # Add new tasks to the beginning of the table and lists
         for task in reversed(tasks_to_add):  # Reverse to add to the top
             self.list_task.insert(0, task)
-            task_widget = Ui_TaskItem(task)  # Assuming Ui_TaskItem is correctly defined
+            task_widget = TaskItem(task)  # Assuming TaskItem is correctly defined
             # self.list_task_widget.insert(0, task_widget)
             self.add_task_widget(task_widget, 0)
             self.add_task_to_table(task_widget, self.list_task.index(task))  # Add to the top (row 0)
@@ -563,7 +566,7 @@ class Ui_TaskManager(QWidget):
             print(f"An error occurred: {e}")
             return None
     
-    def add_task_to_table(self, task_widget: Ui_TaskItem, row):
+    def add_task_to_table(self, task_widget: TaskItem, row):
         self.table_widget.insertRow(row)
         self.table_widget.setCellWidget(row, 0, task_widget.status_label)
         self.table_widget.setCellWidget(row, 1, task_widget.create_at_value)
@@ -643,7 +646,7 @@ if __name__ == "__main__":
         task_output="",
         task_message=""
     )
-    # ui = Ui_TaskItem(avt_task)
+    # ui = TaskItem(avt_task)
     ui = Ui_TaskManager()
     ui.show()
     sys.exit(app.exec_())

@@ -46,12 +46,11 @@ class StatusValue(Enum):
 
 PROCESS_LOG_DIR = '.process_log'
 
-def format_timestamp(timestamp_int):
+def format_timestamp(time : datetime):
+    if time is None:
+        return ""
     try:
-        # Convert the integer timestamp to a datetime object
-        dt_object = datetime.fromtimestamp(int(timestamp_int/1000))
-        # Format the datetime object to the desired format
-        formatted_time = dt_object.strftime('%H:%M:%S %d-%m-%Y')
+        formatted_time = time.strftime('%H:%M:%S %d-%m-%Y')
         return formatted_time
     except ValueError:
         return "Invalid Timestamp"  # Placeholder string when ValueError occurs
@@ -103,9 +102,9 @@ class TaskItem(QWidget):
         self.status_layout.addWidget(self.status_label)
         
         self.create_at_header = HeaderLabel("Khởi tạo:")
-        self.create_at_value = ValueLabel(format_timestamp(self.task.createdAt))
+        self.create_at_value = ValueLabel(format_timestamp(self.task.created_at))
         self.update_at_header = HeaderLabel("Cập nhật:")
-        self.update_at_value = ValueLabel(format_timestamp(self.task.updatedAt))
+        self.update_at_value = ValueLabel(format_timestamp(self.task.updated_at))
         self.creator_header = HeaderLabel("Người tạo:")
         self.creator_value = ValueLabel(self.task.creator)
         self.type_header = HeaderLabel("Type:")
@@ -133,7 +132,7 @@ class TaskItem(QWidget):
         self.time_excute_value = ValueLabel("0s")
         self.time_excute_value.setAlignment(Qt.AlignCenter)
         self.time_remain_header = HeaderLabel("ETA:")
-        self.time_remain_value = ValueLabel(f"{str(self.task.task_ETA)}s")
+        self.time_remain_value = ValueLabel(f"{str(self.task.task_eta)}s")
         self.time_remain_value.setAlignment(Qt.AlignCenter)
         
         # Adding widgets to the grid layout
@@ -219,8 +218,8 @@ class TaskItem(QWidget):
             self.update_task_status(new_task_status)
             
         # update data that can be changed by modules
-        self.update_at_value.setText(format_timestamp(self.task.updatedAt))
-        self.time_remain_value.setText(f"{str(self.task.task_ETA)}s")
+        self.update_at_value.setText(format_timestamp(self.task.updated_at))
+        self.time_remain_value.setText(f"{str(self.task.task_eta)}s")
     
     def update_task_data_from_db(self):
         self.task = self.db.get_task_by_id(self.task.id)
@@ -231,8 +230,8 @@ class TaskItem(QWidget):
             self.update_task_status(new_task_status)
             
         # update information
-        self.update_at_value.setText(format_timestamp(self.task.updatedAt))
-        self.time_remain_value.setText(f"{str(self.task.task_ETA)}s") # maybe module udpate ETA while processing
+        self.update_at_value.setText(format_timestamp(self.task.updated_at))
+        self.time_remain_value.setText(f"{str(self.task.task_eta)}s") # maybe module udpate ETA while processing
     
      
     def update_task_command(self, command):
@@ -267,6 +266,8 @@ class TaskItem(QWidget):
         # TODO: Hanle not-responding, ask user for kill this process or auto kill
         self.status_label.setText("NOT RESPONDING")
         self.status_label.setStyleSheet(f"font-size: 10pt; font-weight: bold; color: {status_colors[StatusValue.ERROR.value].name()};")
+        print("Kill non-responding process: ", self.task.process_id)
+        self.kill_process()
     
     def process_ended(self, exit_code):
         print(f"Process of task {self.task.id} end with exit code: {exit_code}")
@@ -634,15 +635,15 @@ if __name__ == "__main__":
     app.setStyleSheet(stylesheet)
 
     avt_task = AvtTask(
-        createdAt=int(datetime.now().timestamp()),
-        updatedAt=int(datetime.now().timestamp()),
+        created_at=int(datetime.now().timestamp()),
+        updated_at=int(datetime.now().timestamp()),
         type=7,
         creator="Thai Hoc",
         task_param="""[{"name": "main_image_file", "value": "/data/tiff-data/quang_ninh_1m.tif"}, {"name": "template_image_file", "value": "/data/tiff-data/template/05_resized.png"}]""",
         task_stat=-1,
         worker_ip="127.0.0.1",
         process_id=0,
-        task_ETA=3600,
+        task_eta=3600,
         task_output="",
         task_message=""
     )

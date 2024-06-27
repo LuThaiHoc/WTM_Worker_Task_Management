@@ -7,5 +7,5 @@
 + Hiển thị RAM, CPU, thời gian tiến trình đang chạy,...
 + Kill tiến trình nếu bị treo
 + Force kill tiến trình
-+ Update task_task, task_ETA,... vào db
++ Update task_task, task_eta,... vào db
 + Xử lý kết thúc tiến trình

@@ -1,11 +1,11 @@
-from sqlalchemy import create_engine, Column, Integer, Text, Float, Boolean, exc, text
+from sqlalchemy import create_engine, Column, Integer, Text, Float, Boolean, exc, text, DateTime, VARCHAR
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 import json, os
 
-class DatabaseConfig():
-    def __init__(self,host="localhost", database="diary_management", user="postgres", password="123456", port=5432):
+class DatabaseConfig:
+    def __init__(self, host="localhost", database="avt", user="postgres", password="123456", port=5432):
         self.host = host
         self.database = database
         self.user = user
@@ -46,36 +46,37 @@ class DatabaseConfig():
 Base = declarative_base()
 
 class AvtTask(Base):
-    __tablename__ = 'avt_tasks'
+    __tablename__ = 'avt_task'
     
-    createdAt = Column(Integer, nullable=True)
-    updatedAt = Column(Integer, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
-    type = Column(Float, nullable=True)
-    creator = Column(Text, nullable=True)
+    type = Column(Integer, nullable=False)
+    creator = Column(VARCHAR, nullable=True)
     task_param = Column(Text, nullable=True)
-    task_stat = Column(Float, nullable=True)
-    worker_ip = Column(Text, nullable=True)
-    process_id = Column(Float, nullable=True)
-    task_ETA = Column(Float, nullable=True)
+    task_stat = Column(Integer, nullable=True)
+    worker_ip = Column(VARCHAR, nullable=True)
+    process_id = Column(Integer, nullable=True)
+    task_eta = Column(Integer, nullable=True)
     task_output = Column(Text, nullable=True)
-    task_message = Column(Text, nullable=True)
+    task_message = Column(VARCHAR, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=True)
+    user_id = Column(Integer, nullable=True)
 
 class TaskConfig(Base):
-    __tablename__ = 'task_config'
+    __tablename__ = 'avt_task_config'
     
-    createdAt = Column(Integer, nullable=True)
-    updatedAt = Column(Integer, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(Text, nullable=True, unique=True)
-    type = Column(Float, nullable=True)
+    name = Column(VARCHAR, nullable=False, unique=True)
+    type = Column(Integer, nullable=False)
     params = Column(Text, nullable=True)
     outputs = Column(Text, nullable=True)
     options = Column(Text, nullable=True)
-    startBy = Column(Text, nullable=True)
+    start_by = Column(VARCHAR, nullable=True)
     enable = Column(Boolean, nullable=True)
-    contentHtml = Column(Text, nullable=True)
-    order = Column(Float, nullable=True)
+    content_html = Column(Text, nullable=True)
+    order = Column(Integer, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=True)
 
 class Database:
     def __init__(self, host, port, user, password, db_name):
@@ -85,7 +86,6 @@ class Database:
         self.connected = False
         try:
             self.test_connection()
-            # print("Database connection established.")
             self.connected = True
         except Exception as e:
             print(f"Failed to connect to the database: {e}")
@@ -94,37 +94,37 @@ class Database:
     def create_db_url(host, port, user, password, db_name):
         return f'postgresql://{user}:{password}@{host}:{port}/{db_name}'
 
-    def add_task(self, task_type, creator, task_param=None, task_stat=None, worker_ip=None, process_id=None, task_ETA=None, task_output=None, task_message=None):
+    def add_task(self, task_type, creator, task_param=None, task_stat=None, worker_ip=None, process_id=None, task_eta=None, task_output=None, task_message=None, user_id=None):
         session = self.Session()
         
         try:
-            # Convert task_param to JSON string if it's a list of dictionaries
             param_json = json.dumps(task_param) if (isinstance(task_param, list) or isinstance(task_param, dict)) else task_param
             
             new_task = AvtTask(
-                createdAt=int(datetime.now().timestamp()*1000),
-                updatedAt=int(datetime.now().timestamp()*1000),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 type=task_type,
                 creator=creator,
                 task_param=param_json,
                 task_stat=task_stat,
                 worker_ip=worker_ip,
                 process_id=process_id,
-                task_ETA=task_ETA,
+                task_eta=task_eta,
                 task_output=task_output,
-                task_message=task_message
+                task_message=task_message,
+                user_id=user_id
             )
             session.add(new_task)
             session.commit()
-            id = new_task.id  # Access the task_id before closing the session
+            task_id = new_task.id
         except SQLAlchemyError as e:
             session.rollback()
             print(f"Error adding task: {e}")
-            id = None
+            task_id = None
         finally:
             session.close()
         
-        return id
+        return task_id
 
     def update_task(self, task_id, **kwargs):
         session = self.Session()
@@ -135,7 +135,7 @@ class Database:
                 return False
             for key, value in kwargs.items():
                 setattr(task, key, value)
-            task.updatedAt = int(datetime.now().timestamp()*1000)
+            task.updated_at = datetime.now()
             session.commit()
             success = True
         except SQLAlchemyError as e:
@@ -165,7 +165,7 @@ class Database:
         session = self.Session()
         
         try:
-            query = session.query(AvtTask).order_by(AvtTask.createdAt.desc())
+            query = session.query(AvtTask).order_by(AvtTask.created_at.desc())
             if limit:
                 query = query.limit(limit)
             if offset:
@@ -179,7 +179,7 @@ class Database:
         
         return tasks
 
-    def add_task_config(self, name, task_type, params=None, outputs=None, options=None, startBy=None, enable=True, contentHtml=None, order=None):
+    def add_task_config(self, name, task_type, params=None, outputs=None, options=None, start_by=None, enable=True, content_html=None, order=None):
         session = self.Session()
         
         try:
@@ -187,21 +187,21 @@ class Database:
             outputs_json = json.dumps(outputs) if (isinstance(outputs, list) or isinstance(outputs, dict)) else outputs
             
             new_config = TaskConfig(
-                createdAt=int(datetime.now().timestamp()*1000),
-                updatedAt=int(datetime.now().timestamp()*1000),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
                 name=name,
                 type=task_type,
                 params=params_json,
                 outputs=outputs_json,
                 options=options,
-                startBy=startBy,
+                start_by=start_by,
                 enable=enable,
-                contentHtml=contentHtml,
+                content_html=content_html,
                 order=order
             )
             session.add(new_config)
             session.commit()
-            config_id = new_config.id  # Access the config_id before closing the session
+            config_id = new_config.id
         except SQLAlchemyError as e:
             session.rollback()
             print(f"Error adding task config: {e}")
@@ -220,7 +220,7 @@ class Database:
                 return False
             for key, value in kwargs.items():
                 setattr(config, key, value)
-            config.updatedAt = int(datetime.now().timestamp()*1000)
+            config.updated_at = datetime.now()
             session.commit()
             success = True
         except SQLAlchemyError as e:
@@ -254,9 +254,9 @@ class Database:
         try:
             with self.engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
-            # print("Successfully connected to the database.")
         except exc.SQLAlchemyError as e:
             raise Exception(f"Database connection failed: {e}")
+        
 # Example usage
 if __name__ == "__main__":
 
@@ -264,50 +264,4 @@ if __name__ == "__main__":
     print(db_config.host, db_config.port)
     db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
     
-    task_param = [{"name":"main_image_file","value":"/data/tiff-data/quang_ninh_1m.tif"},{"name":"template_image_file","value":"/data/tiff-data/template/08_resized.png"}]
-    
-    # # Adding a new task
-    # task_id = db.add_task(
-    #     task_type=7,
-    #     creator='alex',
-    #     task_param=task_param,
-    #     task_stat=-5,
-    #     worker_ip='127.0.0.1',
-    #     process_id=123,
-    #     task_ETA=3600,
-    #     task_output='',
-    #     task_message=''
-    # )
-    # print(f"New task added with ID: {task_id}")
-    
-    success = db.update_task(task_id=24, task_stat=11, task_output="test updated at trigger")
-    if success:
-        print("success update task stat")
-    else:
-        print("Error when update task stat")
-    
-    # Getting a list of tasks
-    # tasks = db.get_tasks(limit=10)
-    # for task in tasks:
-    #     print(f"Task ID: {task.id}, Type: {task.type}, Creator: {task.creator}, param: {task.task_param}, type: {type(task.task_param)}")
-
-    # # Adding a new task config
-    # object_finder_param = [{"type":"file","name":"main_image_file","text":"","default":""},{"type":"file","name":"template_image_file","text":"","default":""}]
-    # objct_finder_output = [{"type":"file","name":"result_image_file","text":"","default":"","value":""},{"type":"string","name":"rotated_bounding_box","text":"","default":"","value":""}]
-    # config_id = db.add_task_config(
-    #     name="object_finder",
-    #     task_type=7,
-    #     params=object_finder_param,
-    #     outputs=objct_finder_output,
-    #     options="{}",
-    #     startBy="WorkerManager",
-    #     enable=True,
-    #     contentHtml="Tìm đối tượng từ ảnh mẫu",
-    #     order=1.0
-    # )
-    # print(f"New task config added with ID: {config_id}")
-
-    # Getting a list of task configs
-    # configs = db.get_task_configs(limit=10)
-    # for config in configs:
-    #     print(f"Config ID: {config.id}, Name: {config.name}, Type: {config.type}")
+    db.update_task(5, creator="ThaiHocUpdated")

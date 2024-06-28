@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QFormLayout, QListWidget, QListWidgetItem, QDateTimeEdit,
     QApplication, QWidget, QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton,
     QHBoxLayout, QComboBox, QCheckBox, QFileDialog, QProgressDialog, QSizePolicy, QProgressBar, QGridLayout, QSpacerItem,
-    QTableWidget, QTableWidgetItem, QHeaderView
+    QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit
 )
 from PyQt5.QtGui import QFont, QImage, QPixmap, QDesktopServices, QColor, QMouseEvent
 from PyQt5.QtCore import pyqtSignal, QDateTime, Qt, QUrl, QTimer
@@ -79,6 +79,81 @@ class ValueLabel(QLabel):
         value_font = QFont("Arial Unicode MS", 13)
         self.setFont(value_font)
         self.setStyleSheet("color: #e0e0e0;")  # Example color for values, adjust as needed
+        
+class TaskItemDetails(QDialog):
+    def __init__(self, task_data: AvtTask, process_log: str):
+        super().__init__()
+        self.task = task_data
+        self.process_log = process_log
+        self.setMinimumWidth(640)
+        self.initUI()
+
+    def initUI(self):
+        form_layout = QFormLayout()
+
+        # Header labels with custom styling
+        header_font = QFont("Arial Unicode MS", 14, QFont.Bold)
+        header_color = "#f0f0f0"  # Light gray color for headers
+        value_font = QFont("Arial Unicode MS", 13)
+        value_color = "#e0e0e0"  # Lighter gray color for values
+
+        # Task ID
+        form_layout.addRow(HeaderLabel("Task ID:"), ValueLabel(str(self.task.id)))
+        # Type
+        form_layout.addRow(HeaderLabel("Type:"), ValueLabel(str(self.task.type)))
+        # Creator
+        form_layout.addRow(HeaderLabel("Creator:"), ValueLabel(self.task.creator))
+        # Task Param
+        task_param_text = QTextEdit()
+        task_param_text.setReadOnly(True)
+        task_param_text.setPlainText(self.task.task_param)
+        self.setupTextEdit(task_param_text, value_font)
+        form_layout.addRow(HeaderLabel("Task Param:"), task_param_text)
+        # Task Stat
+        form_layout.addRow(HeaderLabel("Task Stat:"), ValueLabel(str(self.task.task_stat)))
+        # Worker IP
+        form_layout.addRow(HeaderLabel("Worker IP:"), ValueLabel(self.task.worker_ip))
+        # Process ID
+        form_layout.addRow(HeaderLabel("Process ID:"), ValueLabel(str(self.task.process_id)))
+        # Task ETA
+        form_layout.addRow(HeaderLabel("Task ETA:"), ValueLabel(str(self.task.task_eta)))
+        # Task Output
+        task_output_text = QTextEdit()
+        task_output_text.setReadOnly(True)
+        task_output_text.setPlainText(self.task.task_output)
+        self.setupTextEdit(task_output_text, value_font)
+        form_layout.addRow(HeaderLabel("Task Output:"), task_output_text)
+        # Task Message
+        task_message_text = QTextEdit()
+        task_message_text.setReadOnly(True)
+        task_message_text.setPlainText(self.task.task_message)
+        self.setupTextEdit(task_message_text, value_font)
+        form_layout.addRow(HeaderLabel("Task Message:"), task_message_text)
+        # Created At
+        form_layout.addRow(HeaderLabel("Created At:"), ValueLabel(str(self.task.created_at)))
+        # Updated At
+        form_layout.addRow(HeaderLabel("Updated At:"), ValueLabel(str(self.task.updated_at)))
+        # User ID
+        form_layout.addRow(HeaderLabel("User ID:"), ValueLabel(str(self.task.user_id)))
+
+        # Process Log
+        process_log_text = QTextEdit()
+        process_log_text.setReadOnly(True)
+        process_log_text.setPlainText(self.process_log)
+        self.setupTextEdit(process_log_text, value_font)
+        form_layout.addRow(HeaderLabel("Process Log:"), process_log_text)
+
+        # Set layout and title
+        layout = QVBoxLayout()
+        layout.addLayout(form_layout)
+        self.setLayout(layout)
+        self.setWindowTitle(f"Task Details: {self.task.id}")
+
+    def setupTextEdit(self, text_edit, font):
+        text_edit.setStyleSheet(f"color: white; font: {font.family()}, {font.pointSize()}pt;")
+        # text_edit.setFixedHeight(min(text_edit.document().size().height() + 10, 200))  # Set maximum height and adjust dynamically
+        text_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
 
 class TaskItem(QWidget):
     signal_status_changed = pyqtSignal()
@@ -175,8 +250,10 @@ class TaskItem(QWidget):
         
         self.start_process_button = QPushButton("Start Process")
         self.kill_process_button = QPushButton("Kill Process")
+        self.view_task_detail_button = QPushButton("View Details")
         self.grid_layout.addWidget(self.start_process_button, 0, 12)
         self.grid_layout.addWidget(self.kill_process_button, 1, 12)
+        self.grid_layout.addWidget(self.view_task_detail_button, 0, 13)
 
         self.main_layout.addLayout(self.status_layout)
         self.main_layout.addLayout(self.grid_layout)
@@ -187,6 +264,7 @@ class TaskItem(QWidget):
         self.update_task_status(self.get_status_by_stat(self.task.task_stat))
         self.start_process_button.clicked.connect(self.start_process)
         self.kill_process_button.clicked.connect(self.kill_process)
+        self.view_task_detail_button.clicked.connect(self.view_task_detail)
         
         self.command = ""
         
@@ -199,6 +277,18 @@ class TaskItem(QWidget):
         self.auto_update_task_data_timer = QTimer(self)
         self.auto_update_task_data_timer.timeout.connect(self.auto_update_task_data_from_db)
         self.auto_update_task_data_timer.start(3000) # auto update data every 3s
+    
+    def view_task_detail(self):
+        process_log = ""
+        try:
+            with open(self.process_log_file_path, 'r') as file:
+                process_log = file.read()
+        except FileNotFoundError:
+            process_log = ""
+        dialog = TaskItemDetails(self.task, process_log)
+        
+        dialog.setParent(self.parent())
+        dialog.exec()
     
     def increase_waiting_queue_position(self):
         self.update_task_data_from_db()
@@ -213,14 +303,20 @@ class TaskItem(QWidget):
         self.task = self.db.get_task_by_id(self.task.id)
         new_task_status = self.get_status_by_stat(self.task.task_stat) # it will ignore killed status
         
-        # update status display
-        if self.status != new_task_status and self.status != StatusValue.KILLED:
-            self.update_task_status(new_task_status)
+        # ## Temprary fix for wating module update....
+        # # update status display
+        # if self.status != new_task_status and self.status != StatusValue.KILLED:
+        #     print(f"Update process status from {self.status.value} to {new_task_status.value}")
+        #     self.update_task_status(new_task_status)
             
         # update data that can be changed by modules
         self.update_at_value.setText(format_timestamp(self.task.updated_at))
         self.time_remain_value.setText(f"{str(self.task.task_eta)}s")
-    
+        
+        # Temporary update running time
+        if self.task.task_stat > 1:
+            self.time_excute_value.setText(f"{self.task.task_stat}s")
+        
     def update_task_data_from_db(self):
         self.task = self.db.get_task_by_id(self.task.id)
         new_task_status = self.get_status_by_stat(self.task.task_stat) # it will ignore killed status
@@ -246,6 +342,10 @@ class TaskItem(QWidget):
         self.process_monitor.signal_process_not_responding.connect(self.process_non_responding)
     
     def update_running_time(self, value):
+        # currently dont update running time by WTM
+        # let this job for module, WTM just update running time from db
+        pass
+        
         self.time_excute_value.setText(f"{value}s")
         # update running time in task stat
         if value > 1: # only update running time > 1 in task_stat to avoid confilict with tast_stat=1 (finished) or task_stat = 0 (error)
@@ -325,8 +425,9 @@ class TaskItem(QWidget):
     def start_process(self):
         # start process
         # temporary update process stat for get out of WAITING queue (status)
-        self.db.update_task(self.task.id, task_stat=1.5)
-        self.task.task_stat = 1.5
+        # Let module do it
+        # self.db.update_task(self.task.id, task_stat=1.5)
+        self.task.task_stat = 2
         self.process_monitor.start_process(self.process_log_file_path)
 
         
@@ -359,7 +460,7 @@ class Ui_TaskManager(QWidget):
     def __init__(self, config_file="config.json"):
         super().__init__()
         self.config_file = config_file
-        self.task_limit = 10
+        self.task_limit = 100
         db_config = DatabaseConfig().read_from_json(self.config_file)
         self.db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
 
@@ -369,7 +470,7 @@ class Ui_TaskManager(QWidget):
         self.info_layout = QVBoxLayout()
         self.machine_stats_layout = QVBoxLayout()
         self.table_widget = QTableWidget()
-        self.cols = ["Trạng thái", "Khởi tạo", "Cập nhật", "Người tạo", "Type", "CPU Usage", "RAM Usage", "Thực thi", "ETA", "", ""]
+        self.cols = ["Trạng thái", "Khởi tạo", "Cập nhật", "Người tạo", "Type", "CPU Usage", "RAM Usage", "Thực thi", "ETA", "", "", ""]
         self.table_widget.setColumnCount(len(self.cols))  # Number of columns to display
         self.table_widget.setHorizontalHeaderLabels(self.cols)
         self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -389,17 +490,26 @@ class Ui_TaskManager(QWidget):
         self.num_error_header = HeaderLabel("KILLED/ERROR")
         self.num_error_header.setStyleSheet(f"font-size: 14pt; font-weight: bold; color: {status_colors[StatusValue.KILLED.value].name()};")
         self.num_error_value = HeaderLabel("0")
+        
+        spacer1 = QSpacerItem(20, 30, QSizePolicy.Minimum, QSizePolicy.Minimum)
+        self.num_task_layout.addItem(spacer1)
         self.num_task_layout.addRow(self.num_task_header, QLabel())
         self.num_task_layout.addRow(self.num_waiting_header, self.num_waiting_value)
         self.num_task_layout.addRow(self.num_running_header, self.num_running_value)
         self.num_task_layout.addRow(self.num_finished_header, self.num_finished_value)
         self.num_task_layout.addRow(self.num_error_header, self.num_error_value)
+        spacer = QSpacerItem(20, 20, QSizePolicy.Maximum, QSizePolicy.Maximum)
+        self.num_task_layout.addItem(spacer)
+        self.auto_serve_task_checkbox = QCheckBox("Auto services task")
+        self.auto_serve_task_checkbox.stateChanged.connect(self.auto_serve_task_state_change)
+        self.auto_serve_task_checkbox.setStyleSheet(f"font-size: 14pt; font-weight: bold; color: white;")
+        self.num_task_layout.addRow(self.auto_serve_task_checkbox, QLabel(""))
         self.num_task_layout.setSpacing(10)
         
         self.num_task_widget = QWidget()
         self.num_task_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0);")
         self.num_task_widget.setLayout(self.num_task_layout)
-        self.num_task_widget.setFixedSize(200, 150)
+        # self.num_task_widget.setFixedSize(200, 150)
         self.info_layout.addWidget(self.num_task_widget)
         # self.info_layout.addLayout(self.num_task_layout)
         
@@ -438,10 +548,19 @@ class Ui_TaskManager(QWidget):
         self.update_task_from_db_timer.timeout.connect(self.update_list_task_from_db)
         self.update_task_from_db_timer.start(1000)
         
-        # auto start process by process queue
+        # # Currently start task by manual
+        # # auto start process by process queue
         self.auto_serve_waiting_tasks_timer = QTimer(self)
         self.auto_serve_waiting_tasks_timer.timeout.connect(self.serve_waiting_tasks)  
-        self.auto_serve_waiting_tasks_timer.start(2000)
+        # self.auto_serve_waiting_tasks_timer.start(2000)
+    
+    def auto_serve_task_state_change(self):
+        if self.auto_serve_task_checkbox.isChecked():
+            # self.auto_serve_waiting_tasks_timer.start(2000)
+            QMessageBox.warning(self, "Function not avaiable", "Currently just start task by click start process for development, to prevent affect others task by auto mode")
+            self.auto_serve_task_checkbox.setChecked(False)
+        else:
+            self.auto_serve_waiting_tasks_timer.stop()
     
     def serve_waiting_tasks(self):
         need_to_update_queue = True
@@ -489,7 +608,6 @@ class Ui_TaskManager(QWidget):
         task_widget.update_task_command(full_command)
         # connect signal slot for task changed here
         task_widget.signal_status_changed.connect(self.update_task_statictics)
-        print("Size of task widget: ", sys.getsizeof(task_widget))
         
         self.list_task_widget.insert(index, task_widget)        
         
@@ -506,10 +624,10 @@ class Ui_TaskManager(QWidget):
         # Tasks to remove
         tasks_to_remove = [task for task in self.list_task if task.id not in new_task_ids]
         
-        if len(tasks_to_remove) > 0:
-            print("Removing task" , [task.id for task in tasks_to_remove])
-            print("List task id: ", [task.id for task in self.list_task])
-            print("List task widget id: ", [task.task.id for task in self.list_task_widget])
+        # if len(tasks_to_remove) > 0:
+        #     print("Removing task" , [task.id for task in tasks_to_remove])
+        #     print("List task id: ", [task.id for task in self.list_task])
+        #     print("List task widget id: ", [task.task.id for task in self.list_task_widget])
         
         # Remove tasks
         for task in tasks_to_remove:
@@ -579,8 +697,9 @@ class Ui_TaskManager(QWidget):
         self.table_widget.setCellWidget(row, 7, task_widget.time_excute_value)
         self.table_widget.setCellWidget(row, 8, task_widget.time_remain_value)
         self.table_widget.setCellWidget(row, 9, task_widget.start_process_button)
-        self.table_widget.setCellWidget(row, 10, task_widget.kill_process_button)
-    
+        self.table_widget.setCellWidget(row, 10, task_widget.kill_process_button) 
+        self.table_widget.setCellWidget(row, 10, task_widget.view_task_detail_button)
+        
     def adjust_column_widths(self):
         # Set the resize mode for specific columns to Fixed
         self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
@@ -616,6 +735,7 @@ class Ui_TaskManager(QWidget):
             self.table_widget.setCellWidget(row, 8, item_widget.time_remain_value)
             self.table_widget.setCellWidget(row, 9, item_widget.start_process_button)
             self.table_widget.setCellWidget(row, 10, item_widget.kill_process_button)
+            self.table_widget.setCellWidget(row, 11, item_widget.view_task_detail_button)
 
         self.update_task_statictics()
 

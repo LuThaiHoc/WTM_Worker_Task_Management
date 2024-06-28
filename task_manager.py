@@ -698,7 +698,7 @@ class Ui_TaskManager(QWidget):
         self.table_widget.setCellWidget(row, 8, task_widget.time_remain_value)
         self.table_widget.setCellWidget(row, 9, task_widget.start_process_button)
         self.table_widget.setCellWidget(row, 10, task_widget.kill_process_button) 
-        self.table_widget.setCellWidget(row, 10, task_widget.view_task_detail_button)
+        self.table_widget.setCellWidget(row, 11, task_widget.view_task_detail_button)
         
     def adjust_column_widths(self):
         # Set the resize mode for specific columns to Fixed

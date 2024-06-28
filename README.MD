@@ -38,6 +38,10 @@ WTM (Worker Task Manager) is a Python-based system designed to manage and monito
     ```bash
    pip install -r requirements.txt
    ```
+   If you got error when install psycopg2, need to install libpq first:
+   ```bash
+   sudo apt-get install libpq-dev
+   ```
 3. **Configuration**
 Setup `config.json` file for database connetion, ftp server and module call command (place it at the same path of main program). 
 Simple config file:

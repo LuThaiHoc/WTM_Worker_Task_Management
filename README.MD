@@ -35,13 +35,19 @@ WTM (Worker Task Manager) is a Python-based system designed to manage and monito
    cd WTM_Worker_Task_Management
    ```
 2. **Install dependencies:**
+
+    Install system libs:
+   ```bash
+    sudo apt-get install libpq-dev
+    sudo apt-get install libxcb-xinerama0
+    sudo apt-get install libpq-dev
+    sudo apt-get install python3-distutils
+   ```
+   Install requirements packages: 
     ```bash
    pip install -r requirements.txt
    ```
-   If you got error when install psycopg2, need to install libpq first:
-   ```bash
-   sudo apt-get install libpq-dev
-   ```
+   
 3. **Configuration**
 Setup `config.json` file for database connetion, ftp server and module call command (place it at the same path of main program). 
 Simple config file:

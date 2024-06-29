@@ -1,7 +1,7 @@
 import ftplib
 from ftplib import FTP
 from tqdm import tqdm
-import os, json
+import os, json, hashlib
 
 class FtpConfig():
     def __init__(self,host="localhost", port=2, user="user", password="password"):
@@ -41,6 +41,19 @@ class FtpConfig():
         return cls(**ftp_settings)
 
 
+def calculate_md5(file_path):
+    """
+    Calculate the MD5 checksum of a file.
+
+    :param file_path: Path to the file.
+    :return: MD5 checksum of the file.
+    """
+    hash_md5 = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
 def ftp_download(ftp_server, ftp_port, username, password, file_path, force_download=False):
     """
     Download a file from an FTP server.
@@ -61,16 +74,44 @@ def ftp_download(ftp_server, ftp_port, username, password, file_path, force_down
 
         # Get the file name from the file path
         filename = file_path.split('/')[-1]
+        md5_file_path = file_path + ".md5"
 
         # Define the local path in the /tmp directory, creating corresponding directories
         local_dir = os.path.join('/tmp', os.path.dirname(file_path).lstrip('/'))
         os.makedirs(local_dir, exist_ok=True)
         local_path = os.path.join(local_dir, filename)
+        local_md5_path = local_path + ".md5"
 
-        # Check if the file already exists
-        if os.path.exists(local_path) and not force_download:
-            print(f"File '{filename}' already exists at '{local_path}'.")
-            return local_path
+        # Check if the MD5 file exists on the server
+        md5_file_exists = True
+        try:
+            ftp.size(md5_file_path)
+        except ftplib.error_perm:
+            md5_file_exists = False
+
+        if md5_file_exists:
+            # Download the .md5 file
+            with open(local_md5_path, 'wb') as local_md5_file:
+                ftp.retrbinary(f'RETR {md5_file_path}', local_md5_file.write)
+            
+            # Check if the MD5 file is empty
+            if os.path.getsize(local_md5_path) == 0:
+                print(f"MD5 file '{md5_file_path}' is empty. Proceeding to download the actual file.")
+                force_download = True
+            else:
+                # Read the checksum from the .md5 file
+                with open(local_md5_path, 'r') as local_md5_file:
+                    server_md5_checksum = local_md5_file.read().split()[0]
+
+                # Check if the local file exists and compare checksums
+                if os.path.exists(local_path):
+                    local_md5_checksum = calculate_md5(local_path)
+                    if local_md5_checksum == server_md5_checksum and not force_download:
+                        print(f"File '{filename}' already exists with matching checksum at '{local_path}'.")
+                        return local_path
+        else:
+            print(f"MD5 file '{md5_file_path}' does not exist. Proceeding to download the actual file.")
+            force_download = True
 
         # Get the size of the file
         file_size = ftp.size(file_path)
@@ -103,7 +144,6 @@ def ftp_download(ftp_server, ftp_port, username, password, file_path, force_down
         # Close the FTP connection
         if ftp:
             ftp.quit()
-
 
 
 def ftp_upload(ftp_server, ftp_port, username, password, local_file_path, remote_directory):
@@ -212,8 +252,9 @@ def get_server_checksum(ftp_server, ftp_port, username, password, file_path):
             ftp.quit()
             
 if __name__ == "__main__":
-    ftp_config =FtpConfig().read_from_json("config.json")
-    file_path = ftp_download(ftp_server=ftp_config.host, ftp_port=ftp_config.port, username=ftp_config.user, password=ftp_config.password, file_path="/data/tiff-data/quang_ninh_1m.tif", force_download=True)
+    ftp_config =FtpConfig().read_from_json("../config.json")
+    file_path = ftp_download(ftp_server=ftp_config.host, ftp_port=ftp_config.port, username=ftp_config.user, password=ftp_config.password,
+                             file_path="/data/tiff-data/quang_ninh_1m.tif", force_download=False)
     # file_path = ftp_upload(ftp_server=ftp_config.host, ftp_port=ftp_config.port, username=ftp_config.user, password=ftp_config.password, 
     #                        local_file_path="/tmp/output/22_result_image.png", remote_directory="/output/template_matching")
     

@@ -158,11 +158,12 @@ class TaskItemDetails(QDialog):
 class TaskItem(QWidget):
     signal_status_changed = pyqtSignal()
     
-    def __init__(self, task_data: AvtTask):
+    def __init__(self, task_data: AvtTask, db_connection: Database):
         super().__init__()
         self.task = task_data
-        db_config = DatabaseConfig().read_from_json("config.json")
-        self.db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
+        # db_config = DatabaseConfig().read_from_json("config.json")
+        # self.db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
+        self.db = db_connection
         self.process_log_file_path = os.path.join(PROCESS_LOG_DIR, f"{self.task.id}.log")
         
         self.main_layout = QHBoxLayout()
@@ -285,6 +286,7 @@ class TaskItem(QWidget):
                 process_log = file.read()
         except FileNotFoundError:
             process_log = ""
+        self.update_task_data_from_db()
         dialog = TaskItemDetails(self.task, process_log)
         
         dialog.setParent(self.parent())
@@ -536,10 +538,11 @@ class Ui_TaskManager(QWidget):
 
         self.list_task = self.db.get_tasks(limit=self.task_limit)
         self.list_task_widget = []
+        
         for index, task in enumerate(self.list_task):
-            task_widget = TaskItem(task)
+            task_widget = TaskItem(task, self.db)
             self.add_task_widget(task_widget, index)
-
+        
         self.adjust_column_widths()
         self.populate_table()
         
@@ -648,7 +651,7 @@ class Ui_TaskManager(QWidget):
         # Add new tasks to the beginning of the table and lists
         for task in reversed(tasks_to_add):  # Reverse to add to the top
             self.list_task.insert(0, task)
-            task_widget = TaskItem(task)  # Assuming TaskItem is correctly defined
+            task_widget = TaskItem(task, self.db)  # Assuming TaskItem is correctly defined
             # self.list_task_widget.insert(0, task_widget)
             self.add_task_widget(task_widget, 0)
             self.add_task_to_table(task_widget, self.list_task.index(task))  # Add to the top (row 0)

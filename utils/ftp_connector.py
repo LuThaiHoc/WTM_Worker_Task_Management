@@ -108,6 +108,9 @@ def ftp_download(ftp_server, ftp_port, username, password, file_path, force_down
                     local_md5_checksum = calculate_md5(local_path)
                     if local_md5_checksum == server_md5_checksum and not force_download:
                         print(f"File '{filename}' already exists with matching checksum at '{local_path}'.")
+                        # Remove the local MD5 file if it exists
+                        if os.path.exists(local_md5_path):
+                            os.remove(local_md5_path)
                         return local_path
         else:
             print(f"MD5 file '{md5_file_path}' does not exist. Proceeding to download the actual file.")
@@ -132,6 +135,9 @@ def ftp_download(ftp_server, ftp_port, username, password, file_path, force_down
             ftp.retrbinary(cmd=f'RETR {file_path}', callback=callback)
 
         print(f"File '{filename}' downloaded successfully to '{local_path}'.")
+        # Remove the local MD5 file if it exists
+        if os.path.exists(local_md5_path):
+            os.remove(local_md5_path)
 
         # Return the path of the downloaded file
         return local_path
@@ -252,7 +258,7 @@ def get_server_checksum(ftp_server, ftp_port, username, password, file_path):
             ftp.quit()
             
 if __name__ == "__main__":
-    ftp_config =FtpConfig().read_from_json("../config.json")
+    ftp_config =FtpConfig().read_from_json("./config.json")
     file_path = ftp_download(ftp_server=ftp_config.host, ftp_port=ftp_config.port, username=ftp_config.user, password=ftp_config.password,
                              file_path="/data/tiff-data/quang_ninh_1m.tif", force_download=False)
     # file_path = ftp_upload(ftp_server=ftp_config.host, ftp_port=ftp_config.port, username=ftp_config.user, password=ftp_config.password, 

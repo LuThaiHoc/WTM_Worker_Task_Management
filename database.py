@@ -49,7 +49,9 @@ class AvtTask(Base):
     __tablename__ = 'avt_task'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    type = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=True)
+    task_type = Column(Integer, nullable=False)
+    task_config_id = Column(Integer, nullable=True)
     creator = Column(VARCHAR, nullable=True)
     task_param = Column(Text, nullable=True)
     task_stat = Column(Integer, nullable=True)
@@ -60,7 +62,6 @@ class AvtTask(Base):
     task_message = Column(VARCHAR, nullable=True)
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=True)
-    user_id = Column(Integer, nullable=True)
 
 class TaskConfig(Base):
     __tablename__ = 'avt_task_config'
@@ -77,15 +78,18 @@ class TaskConfig(Base):
     order = Column(Integer, nullable=False)
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=True)
+    parent_type = Column(Integer, nullable=True)
 
 class Database:
     def __init__(self, host, port, user, password, db_name):
+        print(f"Connecting to the database: {host}:{port}")
         self.db_url = self.create_db_url(host, port, user, password, db_name)
         self.engine = create_engine(self.db_url)
         self.Session = sessionmaker(bind=self.engine)
         self.connected = False
         try:
             self.test_connection()
+            print("Succeed connected to database!")
             self.connected = True
         except Exception as e:
             print(f"Failed to connect to the database: {e}")
@@ -94,7 +98,8 @@ class Database:
     def create_db_url(host, port, user, password, db_name):
         return f'postgresql://{user}:{password}@{host}:{port}/{db_name}'
 
-    def add_task(self, task_type, creator, task_param=None, task_stat=None, worker_ip=None, process_id=None, task_eta=None, task_output=None, task_message=None, user_id=None):
+    def add_task(self, task_type, creator, task_param=None, task_stat=None, worker_ip=None, process_id=None, 
+                 task_eta=None, task_output=None, task_message=None, user_id=None, task_config_id=None):
         session = self.Session()
         
         try:
@@ -103,7 +108,7 @@ class Database:
             new_task = AvtTask(
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
-                type=task_type,
+                task_type=task_type,
                 creator=creator,
                 task_param=param_json,
                 task_stat=task_stat,
@@ -112,7 +117,8 @@ class Database:
                 task_eta=task_eta,
                 task_output=task_output,
                 task_message=task_message,
-                user_id=user_id
+                user_id=user_id,
+                task_config_id=task_config_id
             )
             session.add(new_task)
             session.commit()
@@ -179,7 +185,7 @@ class Database:
         
         return tasks
 
-    def add_task_config(self, name, task_type, params=None, outputs=None, options=None, start_by=None, enable=True, content_html=None, order=None):
+    def add_task_config(self, name, task_type, params=None, outputs=None, options=None, start_by=None, enable=True, content_html=None, order=None, parent_type=None):
         session = self.Session()
         
         try:
@@ -197,7 +203,8 @@ class Database:
                 start_by=start_by,
                 enable=enable,
                 content_html=content_html,
-                order=order
+                order=order,
+                parent_type=parent_type
             )
             session.add(new_config)
             session.commit()
@@ -263,5 +270,8 @@ if __name__ == "__main__":
     db_config = DatabaseConfig().read_from_json("config.json")
     print(db_config.host, db_config.port)
     db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
+    tasks = db.get_tasks(limit=10)
+    for task in tasks:
+        print(task.task_type, task.task_param)
     
-    db.update_task(5, creator="ThaiHocUpdated")
+    # db.update_task(5, creator="ThaiHocUpdated")

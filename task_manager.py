@@ -36,6 +36,32 @@ task_types = {
     8 : "Others",
 }
 
+def read_json_dict(json_file, section):
+    try:
+        # Read the JSON file
+        with open(json_file, 'r') as file:
+            data = json.load(file)
+        
+        # Extract the section
+        section = data.get(section, None)
+        
+        if section is None:
+            raise KeyError(f"Section '{section}' not found in the JSON file.")
+        
+        return section
+    
+    except FileNotFoundError:
+        print(f"Error: The file {json_file} does not exist.")
+        return None
+    except json.JSONDecodeError:
+        print("Error: The file is not a valid JSON.")
+        return None
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
+modules_name_dict = read_json_dict("config.json", "modules_name")
+
 class StatusValue(Enum):
     WAITING = "WAITING"
     RUNNING = "RUNNING"
@@ -100,7 +126,7 @@ class TaskItemDetails(QDialog):
         # Task ID
         form_layout.addRow(HeaderLabel("Task ID:"), ValueLabel(str(self.task.id)))
         # Type
-        form_layout.addRow(HeaderLabel("Type:"), ValueLabel(str(self.task.type)))
+        form_layout.addRow(HeaderLabel("Type:"), ValueLabel(str(self.task.task_type)))
         # Creator
         form_layout.addRow(HeaderLabel("Creator:"), ValueLabel(self.task.creator))
         # Task Param
@@ -184,7 +210,11 @@ class TaskItem(QWidget):
         self.creator_header = HeaderLabel("Người tạo:")
         self.creator_value = ValueLabel(self.task.creator)
         self.type_header = HeaderLabel("Type:")
-        task_type_value = task_types.get(self.task.type, "Unknown")
+        # task_type_value = task_types.get(self.task.task_type, "Unknown")
+        task_type_value = "Unknown"
+        if modules_name_dict is not None:
+            task_type_value = modules_name_dict.get(str(int(self.task.task_type)), "Unknown")
+            task_type_value = f"{self.task.task_type}-{task_type_value}"
         self.type_value = ValueLabel(task_type_value)
         
         
@@ -465,6 +495,10 @@ class Ui_TaskManager(QWidget):
         self.task_limit = 100
         db_config = DatabaseConfig().read_from_json(self.config_file)
         self.db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
+        
+        if not self.db.connected:
+            QMessageBox.warning(self, "Lỗi", "Không thể kết nối đến cơ sở dữ liệu, vui lòng kiểm tra lại file cấu hình!")
+            sys.exit(EXIT_CANNOT_CONNECT_TO_DATABASE)
 
         self.main_layout = QVBoxLayout()
         self.top_layout = QHBoxLayout()
@@ -605,7 +639,7 @@ class Ui_TaskManager(QWidget):
         self.current_system_cpu_percent = value
     
     def add_task_widget(self, task_widget: TaskItem, index=-1): # default to end of list
-        command = self.command_dict.get(str(int(task_widget.task.type)), "")
+        command = self.command_dict.get(str(int(task_widget.task.task_type)), "")
         full_command = f"{command} --avt_task_id {task_widget.task.id} --config_file {self.config_file}" 
         # print("Set task command: ", full_command)
         task_widget.update_task_command(full_command)
@@ -757,19 +791,19 @@ if __name__ == "__main__":
     stylesheet = load_stylesheet('stylesheet/SpyBot.qss')
     app.setStyleSheet(stylesheet)
 
-    avt_task = AvtTask(
-        created_at=int(datetime.now().timestamp()),
-        updated_at=int(datetime.now().timestamp()),
-        type=7,
-        creator="Thai Hoc",
-        task_param="""[{"name": "main_image_file", "value": "/data/tiff-data/quang_ninh_1m.tif"}, {"name": "template_image_file", "value": "/data/tiff-data/template/05_resized.png"}]""",
-        task_stat=-1,
-        worker_ip="127.0.0.1",
-        process_id=0,
-        task_eta=3600,
-        task_output="",
-        task_message=""
-    )
+    # avt_task = AvtTask(
+    #     created_at=int(datetime.now().timestamp()),
+    #     updated_at=int(datetime.now().timestamp()),
+    #     task_type=7,
+    #     creator="Thai Hoc",
+    #     task_param="""[{"name": "main_image_file", "value": "/data/tiff-data/quang_ninh_1m.tif"}, {"name": "template_image_file", "value": "/data/tiff-data/template/05_resized.png"}]""",
+    #     task_stat=-1,
+    #     worker_ip="127.0.0.1",
+    #     process_id=0,
+    #     task_eta=3600,
+    #     task_output="",
+    #     task_message=""
+    # )
     # ui = TaskItem(avt_task)
     ui = Ui_TaskManager()
     ui.show()

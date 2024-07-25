@@ -9,7 +9,8 @@
 - [ ] View details of a task
 - [ ] Ignore a task
 - [ ] Kill non responsive task (auto, ask user)
-
+- [ ] Start task without ID, update task realtime
+ 
 # V1.0
 # Monitor system status
 - [x] CPU

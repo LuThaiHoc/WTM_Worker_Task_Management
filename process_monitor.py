@@ -123,7 +123,7 @@ class ProcessMonitor(QObject):
             
             self.previous_cpu_usage.append(info['total_cpu_usage'])
             self.previous_mem_usage.append(info['total_memory_usage'])
-            if len(self.previous_cpu_usage) > 10:
+            if len(self.previous_cpu_usage) > 60:
                 self.previous_cpu_usage.pop(0)
                 self.previous_mem_usage.pop(0)
         else:
@@ -141,9 +141,10 @@ class ProcessMonitor(QObject):
             self.signal_process_ram_usage_update.emit(0)
 
     def check_unresponsive(self):
-        if len(self.previous_cpu_usage) >= 10: # 10s - base on update infor timer
-            # if dont use CPU or RAM in 10s, set as non responding
+        if len(self.previous_cpu_usage) >= 60: # 10s - base on update infor timer
+            # if dont use CPU or RAM in 30s, set as non responding
             if all(usage == 0 for usage in self.previous_cpu_usage) and len(set(self.previous_mem_usage)) == 1:
+                print(f"Process auto emit non-responding signal - PID: {self.pid}")
                 self.signal_process_not_responding.emit()
     
     def kill_process(self):

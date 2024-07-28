@@ -63,6 +63,15 @@ class AvtTask(Base):
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=True)
 
+    def __repr__(self):
+        return (f"AvtTask(id={self.id}, user_id={self.user_id}, task_type={self.task_type}, "
+                f"task_config_id={self.task_config_id}, creator='{self.creator}', "
+                f"task_param='{self.task_param}', task_stat={self.task_stat}, "
+                f"worker_ip='{self.worker_ip}', process_id={self.process_id}, "
+                f"task_eta={self.task_eta}, task_output='{self.task_output}', "
+                f"task_message='{self.task_message}', created_at={self.created_at}, "
+                f"updated_at={self.updated_at})")
+        
 class TaskConfig(Base):
     __tablename__ = 'avt_task_config'
     

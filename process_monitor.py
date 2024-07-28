@@ -2,6 +2,7 @@ import psutil
 import subprocess
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 import os
+from system_log import logger
 
 class ProcessMonitor(QObject):
     signal_running_time_update = pyqtSignal(float)  # in seconds
@@ -41,7 +42,8 @@ class ProcessMonitor(QObject):
         self.signal_running_time_update.emit(self.running_time)
         
     def start_process(self, log_file_path = "process_log.log"):
-        print("Starting process with command: ", self.command)
+        # print("Starting process with command: ", self.command)
+        logger.debug(f"Starting process with command: {self.command}")
         
         # self.process = subprocess.Popen(self.command, shell=True)
         # self.pid = self.process.pid
@@ -82,7 +84,8 @@ class ProcessMonitor(QObject):
             proc = psutil.Process(self.pid)
             # Check if the process is a zombie
             if proc.status() == psutil.STATUS_ZOMBIE:
-                print(f"Process {self.pid} is a defunct (zombie) process.")
+                # print(f"Process {self.pid} is a defunct (zombie) process.")
+                logger.debug(f"Process {self.pid} is a defunct (zombie) process.")
                 return None
             
             # Get the total CPU and memory usage of the main process and its children

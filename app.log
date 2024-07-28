@@ -1,8 +1,0 @@
-2024-07-28 11:36:44,618 - WTM - DEBUG - Waiting: 0	Running: 0	Finish: 2	killed/error: 7
-2024-07-28 11:36:49,619 - WTM - DEBUG - Waiting: 0	Running: 0	Finish: 2	killed/error: 7
-2024-07-28 11:36:53,632 - WTM - DEBUG - Interrupt received, stopping...
-2024-07-28 11:38:08,643 - WTM - DEBUG - Waiting: 0	Running: 0	Finish: 2	killed/error: 7
-2024-07-28 11:38:13,644 - WTM - DEBUG - Waiting: 0	Running: 0	Finish: 2	killed/error: 7
-2024-07-28 11:38:18,618 - WTM - DEBUG - Waiting: 0	Running: 0	Finish: 2	killed/error: 7
-2024-07-28 11:38:23,618 - WTM - DEBUG - Waiting: 0	Running: 0	Finish: 2	killed/error: 7
-2024-07-28 11:38:27,610 - WTM - DEBUG - Interrupt received, stopping...

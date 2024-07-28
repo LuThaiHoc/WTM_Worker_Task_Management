@@ -6,3 +6,4 @@ config.json
 modules/
 .process_log
 __pycache__/
+*.log

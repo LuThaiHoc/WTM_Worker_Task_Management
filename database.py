@@ -3,6 +3,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 import json, os
+from system_log import logger
 
 class DatabaseConfig:
     def __init__(self, host="localhost", database="avt", user="postgres", password="123456", port=5432):
@@ -29,12 +30,12 @@ class DatabaseConfig:
         
         with open(file_path, 'w') as json_file:
             json.dump(settings, json_file, indent=4)
-        print(f"Database settings saved to {file_path}")
+        logger.debug(f"Database settings saved to {file_path}")
 
     @classmethod
     def read_from_json(cls, file_path='config.json'):
         if not os.path.exists(file_path):
-            print(f"File {file_path} not found. Returning default settings.")
+            logger.debug(f"File {file_path} not found. Returning default settings.")
             return cls()
         
         with open(file_path, 'r') as json_file:
@@ -91,17 +92,17 @@ class TaskConfig(Base):
 
 class Database:
     def __init__(self, host, port, user, password, db_name):
-        print(f"Connecting to the database: {host}:{port}")
+        logger.debug(f"Connecting to the database: {host}:{port}")
         self.db_url = self.create_db_url(host, port, user, password, db_name)
         self.engine = create_engine(self.db_url)
         self.Session = sessionmaker(bind=self.engine)
         self.connected = False
         try:
             self.test_connection()
-            print("Succeed connected to database!")
+            logger.debug("Succeed connected to database!")
             self.connected = True
         except Exception as e:
-            print(f"Failed to connect to the database: {e}")
+            logger.debug(f"Failed to connect to the database: {e}")
 
     @staticmethod
     def create_db_url(host, port, user, password, db_name):
@@ -134,7 +135,7 @@ class Database:
             task_id = new_task.id
         except SQLAlchemyError as e:
             session.rollback()
-            print(f"Error adding task: {e}")
+            logger.debug(f"Error adding task: {e}")
             task_id = None
         finally:
             session.close()
@@ -155,7 +156,7 @@ class Database:
             success = True
         except SQLAlchemyError as e:
             session.rollback()
-            print(f"Error updating task: {e}")
+            logger.debug(f"Error updating task: {e}")
             success = False
         finally:
             session.close()
@@ -167,11 +168,11 @@ class Database:
         try:
             task = session.query(AvtTask).filter_by(id=task_id).first()
             if not task:
-                print(f"Task with ID {task_id} not found.")
+                logger.debug(f"Task with ID {task_id} not found.")
                 return None
             return task
         except SQLAlchemyError as e:
-            print(f"Error retrieving task by ID: {e}")
+            logger.debug(f"Error retrieving task by ID: {e}")
             return None
         finally:
             session.close()
@@ -187,7 +188,7 @@ class Database:
                 query = query.offset(offset)
             tasks = query.all()
         except SQLAlchemyError as e:
-            print(f"Error retrieving tasks: {e}")
+            logger.debug(f"Error retrieving tasks: {e}")
             tasks = []
         finally:
             session.close()
@@ -220,7 +221,7 @@ class Database:
             config_id = new_config.id
         except SQLAlchemyError as e:
             session.rollback()
-            print(f"Error adding task config: {e}")
+            logger.debug(f"Error adding task config: {e}")
             config_id = None
         finally:
             session.close()
@@ -241,7 +242,7 @@ class Database:
             success = True
         except SQLAlchemyError as e:
             session.rollback()
-            print(f"Error updating task config: {e}")
+            logger.debug(f"Error updating task config: {e}")
             success = False
         finally:
             session.close()
@@ -259,7 +260,7 @@ class Database:
                 query = query.offset(offset)
             configs = query.all()
         except SQLAlchemyError as e:
-            print(f"Error retrieving task configs: {e}")
+            logger.debug(f"Error retrieving task configs: {e}")
             configs = []
         finally:
             session.close()
@@ -277,10 +278,10 @@ class Database:
 if __name__ == "__main__":
 
     db_config = DatabaseConfig().read_from_json("config.json")
-    print(db_config.host, db_config.port)
+    logger.debug(db_config.host, db_config.port)
     db = Database(db_config.host, db_config.port, db_config.user, db_config.password, db_config.database)
     tasks = db.get_tasks(limit=10)
     for task in tasks:
-        print(task.task_type, task.task_param)
+        logger.debug(task.task_type, task.task_param)
     
     # db.update_task(5, creator="ThaiHocUpdated")
